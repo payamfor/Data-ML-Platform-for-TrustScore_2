@@ -1,0 +1,388 @@
+1
+EnStream Data/ML Platform Vendor Brief
+1. Minimal Viable Data Platform
+1.1 Batch
+1.1.1 Storage
+S3 medallion (bronze (in Parquet)/silver (Apache Iceberg)/gold (Apache Iceberg)), partitioned by date
+1.1.2 Ingestion
+Option 1: Incremental Load
+Customer Value: Enable Book of Record (Ad-hoc Batch Job)
+Cost: 1/5-1/10 of cost in comparison to Streaming CDC
+Data Input
+● Database incremental loader from Reporting MySQL Database
+● API pull for TU porting lineage data
+● API pull for MNO activation date and number recycle (for Rogers mostly)
+● Cross-Sector Data Exchange file drops
+Path 1 —MySQL (Glue)
+The Reporting MySQL in AWS main account holds account_changes_batch, device_lookup_batch, audit_trail_services_3, partner_configuration.
+A Glue job in Data & AI pulls incrementally using bookmarks + bounded execution windows + source-side predicates per §6.2.1
+Path 2 — TransUnion PortPS API
+Provides cross-carrier porting events and MNO lineage — the industry-wide feed that captures ports between Bell/Rogers/Telus and unsupported carriers (the only source per §6.1.1 that ties both sides of a port together). Pulled by a scheduled API worker with a persisted cursor.
+Path 3 — MNO APIs
+Pulls from Bell, Rogers, Telus APIs for activation dates and number-recycle lookups — these plug the gaps where the push-event streams or DR database don't fully describe lifecycle. Per-MNO client with rate-limit handling and retry
+Path 4 — SFTP file drops
+2
+The cross-sector bad-actor data exchange: telcos and financial institutions drop fraud labels and bad-actor lists on a scheduled cadence. An SFTP lander picks them up, validates schema on arrival, and lands the raw files in bronze.
+1.1.3 Transformation
+PySpark on EMR (Spot) for data transformation across Bronze 􀀀 Silver and Silver 􀀀 Gold
+1.1.4 Orchestration
+MWAA/Dagster/AWS Step Functions
+1.1.5 Catalog + Data Quality Framework
+AWS Glue Data Catalog
+Great Expectations
+DQ gates:
+● Bronze landing (schema and data format)
+● Silver writing (completeness, uniqueness, referential integrity, timeliness)
+● Gold materialization (lineage consistency, freshness)
+1.2 Hybrid (Batch + Real-time)
+Customer Value: Enable Real-time API (onboarding, authentication, transaction monitoring)
+Cost: much higher than batch
+Data Input
+● Bell/Telus/Rogers real-time push notifications
+● Rogers 2-minute snapshot file drops
+● API pull for TU porting lineage data
+● API pull for MNO activation date and number recycle (for Rogers mostly)
+● Cross-Sector Data Exchange file drops
+1.2.1 Storage
+S3 medallion (bronze (in Parquet)/silver (Apache Iceberg)/gold (Apache Iceberg)), partitioned by date
+● Gold
+o Iceberg-on-S3 – consumed by SageMaker Feature Store offline store
+● Hot Serving Data Store
+o Redshift Serverless –consumed by analyst-facing and product-facing use cases
+(Materialized from Iceberg-on-S3)
+o DynamoDB
+1.2.2 Ingestion
+(including Batch Ingestion from 1.2.1)
+3
+Option 1: Streaming Ingestion (CDC-based)
+Customer Value: Enable Book of Record (Ad-hoc Batch Job) and Cross-Sector Data Exchange MSISDN Ownership Lineage Tracking
+Cost: 5-10x more expensive
+Data Input
+● Streaming CDC from Reporting MySQL Database
+● API pull for TU porting lineage data
+● API pull for MNO activation date and number recycle (for Rogers mostly)
+● Data Exchange file drops
+Reference architecture: aws-samples/transactional-datalake-using-apache-iceberg-on-aws-glue
+Option 2: Real-time Ingestion from Application Layer on top of MySQL Reporting DB in IDV
+Customer Value: Enable Real-time APIs built on top of TS0.5 and Cross-Sector Data Exchange MSISDN Ownership Lineage Tracking
+Cost: shifted to Application Engineering team
+Data Input
+● Events between last batch run and current API call from Reporting MySQL Database
+● API pull for TU porting lineage data
+● API pull for MNO activation date and number recycle (for Rogers mostly)
+● Data Exchange file drops
+For event index path: Amazon Kinesis Data Streams as primary and Amazon MSK as fallback for high-throughput
+Notes: Event Index Path is a low-latency event ingestion path that capture post-batch events for selective recomputation and real-time inference
+1.2.3 Transformation
+Managed Service for Apache Flink
+1.2.4 Orchestration
+Same as 1.1.4 for batch
+Apache Flink jobs for real-time
+1.2.5 Catalog + Data Quality Framework
+Same as 1.1.5
+4
+2. Minimal Viable ML Platform
+2.1 Batch
+2.1.1 Tracking + Registry
+SageMaker Managed MLflow + Model Registry
+2.1.2 Training
+SageMaker Pipelines
+2.1.3 Feature Store
+Offline Feature Store for training and batch scoring SageMaker Feature Store or Iceberg-based
+2.1.4 Inference
+SageMaker Batch Transform
+2.1.5 Monitoring
+● Feature drift: PSI, JS divergence
+● Score drift of base models
+● Reason-code distribution
+● Reall@K and Precision@K against labelled fraud sample
+● Response
+o Retraining
+o Recalibration
+o Investigation
+o Rollback
+SageMaker Model Monitor
+2.2 Hybrid (Batch + Real-time)
+2.2.1 Tracking + Registry
+Same as 2.1.1
+2.2.2 Training
+Same as 2.1.2
+2.2.3 Inference
+SageMaker Real-time endpoints
+2.2.4 Feature Store
+Offline Feature Store (same as 2.1.3)
+Online Feature Store for real-time inference
+SageMaker Feature Store/Feast
+5
+2.2.5 Monitoring
+Same as 2.1.5
+2.2.6 CI/CD
+GitHub Actions, plus a shadow pipeline
+3. Milestones and Scope (vendor vs EnStream)
+3.1 Phase 1 — Batch Operationalized (target: end of June, owned by Data & AI team)
+Customer value delivered: First production trust scores running on an ad-hoc batch cadence, each with a reason code, calibratable suspicion tier, and potential fraud flags. Manually triggered or simply scheduled.
+The goal of this phase is to get the PoC out of notebooks and into something that runs reliably end-to-end on a schedule, even if the surrounding infrastructure is minimal, with the team's own data landing zone in place. This is our team proving the model works in a production-like setting before the vendor wraps a platform around it.
+3.1.1 Shared Scope (vendor + Data & AI team)
+● Incremental load from the IDV MySQL reporting DB into the Data & AI team's S3 (lead by Vendor):
+o Extraction logic (incremental by timestamp, primary key watermark, or equivalent — full reload as a fallback)
+o Land raw extracts into the bronze zone of the team's S3 in a stable file format (Parquet recommended) with partitioning by load date
+o Idempotent re-runs — the same window can be reloaded without duplicating or corrupting downstream data
+o Schema capture and basic schema-drift detection on extract (column added, removed, type changed)
+o Run records: what was extracted, watermark advanced from/to, row counts, success/failure
+3.1.2 Data & AI Team Scope
+● Refactor PoC notebooks into a properly modularized repo — src layout, unit tests, semantic versioning
+● Bronze-to-silver data cleaning and standardization
+● Silver-to-gold transformation logic and feature definitions, codified, reading from the team's S3 bronze zone rather than directly from MySQL ● Reason code mapping v1 (owned by Product) ● Potential fraud flags v1(owned by Product)
+6
+● Suspicion tier calibration v1 against your weakly-labeled or expert-reviewed validation set
+● Rule-based layer on top of model output, v1
+● A runnable batch job — a single command or scheduled trigger that runs the incremental load, transforms bronze → silver → gold, scores, and writes outputs in the agreed format
+● First-cut DQ checks at Bronze, Silver, Gold layers:
+● Implemented as assertions or a lightweight check library inside the package itself, not yet a platform-level DQ framework
+● Basic logging and run records (what ran, when, how many records, success/failure)
+3.1.3 Vendor Scope
+None in this phase. Vendor may shadow / observe / learn to prepare for Phase 2
+3.1.4 Acceptance criteria
+● Incremental load runs end-to-end from MySQL reporting DB into the team's S3 bronze zone, idempotent on re-run, with watermark advancement recorded
+● Schema-drift detection on the extract surfaces changes in the source loudly, not silently
+● Batch job runs end-to-end on production data and produces scores with reason codes and suspicion tiers, sourcing from the team's S3 rather than directly from MySQL
+● DQ assertions pass on every run at both bronze, silver and gold layers; failures halt the job loudly rather than silently producing bad scores
+● Score outputs reconcile to PoC outputs within agreed tolerance on a holdout set
+● Code is packaged, versioned, and tested
+● One runbook exists describing how to trigger, monitor, recover, and backfill the load and the scoring job
+● S3 layout (paths, partitioning, file format, retention) documented and agreed with the vendor as the substrate they will inherit
+3.2 Phase 2 — Batch Automated (target: month 1 – early July, vendor leads)
+Customer value delivered: The batch process from Phase 1 becomes a hands-off, monitored, scheduled production system. Customers get scores on a reliable at whatever cadence basis without anyone manually triggering anything.
+3.2.1 Shared Scope
+● Tune DQ thresholds against real production data as the vendor's platform surfaces them
+3.2.2 Data & AI Team Scope
+● Hand off the packaged job to the vendor with documentation
+● Continue R&D on features, model, and calibration in parallel — your team's roadmap doesn't pause while the vendor productionizes
+7
+3.2.3 Vendor Scope
+● Lift Phase 1's packaged job into the chosen runtime and orchestration layer
+● Automated incremental batch load from the reporting DB into bronze
+● Scheduling and orchestration with retries, dependencies, and SLA tracking
+● Score delivery to consuming systems on the agreed contract
+● Production observability: job success/failure, runtime, record counts, freshness, on-call alerting
+● Runbook and rollback procedures formalized
+● DQ at this phase: the assertion-style checks your team built in Phase 1 are promoted into a platform-level DQ layer with the same logic
+3.2.4 Acceptance Criteria
+● Scheduled batch scoring runs end-to-end on production-volume data with no manual intervention and meets the agreed completion SLA for the full run
+● Every scheduled run produces a complete, versioned score output on the agreed delivery contract; missing or partial deliveries are detected and alert within the agreed time window
+● Data quality checks execute on every run; failures (a) stop or quarantine the affected outputs and (b) generate an alert with enough context to triage (failed rule, impacted dataset, counts)
+● Operational monitoring is live for each run (success/failure, runtime, row counts, freshness) with alerts wired for SLA breach and failed runs
+● A rollback procedure is documented and has been successfully executed at least once in a non-production environment (or production during a controlled window) to restore the prior known-good output
+● Outputs reconcile to Phase 1 outputs within the agreed tolerance over an agreed observation window, with reconciliation results recorded and reviewable
+3.2.5 Milestones
+● M2.1 (early July): Vendor's pipeline runs our Phase 1 job in staging on a schedule, with platform DQ active.
+● M2.2 (mid July): Shadow-run alongside our team's manually-triggered job, outputs reconciled.
+● M2.3 (end July): Production cutover. Vendor's automated batch is the system of record
+3.4 Phase 3 — Real-time Inference (Interim via IDV) (target: end of August, vendor leads)
+Customer value delivered: When an event occurs at the originating source system, affected identities get rescored within seconds. Decision-time and in-session use cases become possible. The Phase 2 batch process continues to run as the system-of-record reconciliation path; the real-time path is additive and authoritative for time-sensitive decisions.
+8
+Latency target: p95 under 2 seconds, p99 under 5 seconds, from event availability in IDV to score availability in consuming systems.
+Application Engineering builds an application on top of the IDV MySQL reporting DB to capture events that occurred between the last batch run and the moment the API request arrives. This feeds an event index path on the data platform to refresh features and enable real-time inference — without rebuilding the underlying ingestion pipeline.
+3.3.1 Shared Scope
+● Define the interface contract between Application Engineering's IDV query layer and the data platform's event index ingestion endpoint — covering payload schema, event typing, delivery guarantees, and error handling
+● Agree on and document the latency budget split across the interim path: IDV query execution, event index write, feature recomputation, inference, score delivery
+● Define the policy for events that are present in the event index but not yet reflected in the batch score: which use cases use the refreshed score vs. the last batch score, and how that is communicated to consuming systems
+● Align on DQ ownership at the IDV boundary: who owns detection and triage of missing events, stale data, or IDV query failures
+3.3.2 Data & AI Team Scopex
+● Feature audit: Classify every gold-layer feature as (a) refreshable via the event index path, (b) batch-only with last-batch fallback, or (c) requires refactoring. Document rationale for each classification.
+● Trigger map: Define which event types arriving via the IDV query layer trigger which feature recomputations for which entities (customer, account, MSISDN scope)
+● Dirty-flag consumption logic: Define how the scoring path consumes dirty flags set by the event index to determine whether selective recomputation is needed before responding to an API request
+● Rule layer tuning: Tune the rule layer, reason code mapping, and potential fraud flagging for real-time context — partial-data scenarios, features that are unavailable on the hot path, and tighter latency budget
+● Freshness SLAs: Define per-feature freshness SLAs and the acceptable staleness window for features that cannot be refreshed from the event index
+● DQ ownership:
+o Parity tolerance between refreshed real-time scores and Phase 2 batch scores on the same entity-day
+o Divergence thresholds and alert policy
+o Policy for failed recomputations: fall back to last batch score, defer, or skip
+o Policy for IDV query failures or missing events
+3.3.3 Vendor Scope
+● Event index path: Build the continuous ingestion path that receives events from Application Engineering's IDV query layer, writes them to the event index, and sets dirty flags in the score cache for affected entities
+9
+● Selective recompute orchestrator: On API request arrival, check dirty flag state for the requested entity; if dirty, trigger incremental feature recomputation using the event index; if clean, return cached score
+● Online feature store: Maintain incrementally updated feature state for entities flagged dirty; features updated from the event index, not recomputed from raw history on the hot path
+● Online inference service: Model held in memory, no cold starts, horizontally scaled, returning score within the latency budget
+● Score cache (DynamoDB / Redis): Persist refreshed scores so repeat requests for the same entity within the same session do not re-trigger recomputation
+● Low-latency score delivery: Sync API response or sub-second-lag topic for consuming systems
+● End-to-end latency monitoring: Instrument from event index write timestamp to score delivery; surface p95 / p99 per use case
+● Parity DQ: Continuous comparison between real-time refreshed scores and Phase 2 batch scores on the same entity-day; divergence alerts with documented thresholds
+● Streaming DQ: Online observer checks for late arrivals, duplicate events, pipeline lag, and event index write failures; alerts on breach
+3.3.4 Acceptance criteria
+● End-to-end latency meets target: p95 under 2 seconds and p99 under 5 seconds from API request receipt to score delivery, measured and reported continuously
+● Real-time refreshed scores match Phase 2 batch scores within the defined tolerance on the same entity-day, with continuous measurement and active alerts on divergence
+● Event-to-entity triggering is correct: representative event payloads result in the expected entity identification and the expected feature recomputation decisions, demonstrated via repeatable tests
+● Dirty-flag behavior is correct: when relevant events arrive, affected entities are marked stale and subsequent requests return a refreshed score; when no relevant events arrive, repeat requests return a cached score without recomputation
+● Interface contract between Application Engineering’s interim event source and the event ingestion endpoint is documented, versioned, and enforced (invalid or breaking payloads are rejected or quarantined with clear errors)
+● Streaming data quality controls are active for the interim real-time path (e.g., duplicates, late events, missing required fields, pipeline lag), with documented thresholds and alerting
+● Controlled failure handling is proven: under simulated upstream unavailability and under simulated recomputation failure, the system follows the documented policy (e.g., fall back to last batch score) and the condition is observable via metrics and alerts
+● Required documentation exists and is usable: feature audit (refreshable vs batch-only), trigger map, latency budget allocation, and operational runbook for monitoring and recovery
+10
+3.3.5 Milestones
+● M3.1: Interface contract between Application Engineering and the event index finalized; feature audit complete; trigger map defined; dirty-flag propagation design agreed
+● M3.2: Event index path live in staging; selective recompute logic implemented; parity DQ framework deployed; streaming DQ checks active
+● M3.3: Online inference service live in staging; end-to-end latency validated against budget on representative traffic; score cache behavior verified
+● M3.4: Real-time refresh path live in production for opted-in customers; parity dashboards live; Phase 2 batch retained as daily reconciliation and fallback
+3.4 Phase 4 — Real-Time Inference (target: end of December, vendor leads)
+Customer value delivered: When an event occurs at the originating source system, affected identities get rescored within seconds. Decision-time and in-session use cases become possible. The Phase 2 batch process continues to run as the system-of-record reconciliation path; the real-time path is additive and authoritative for time-sensitive decisions. Plus more trust in our datasets because of DQ.
+Latency target: p95 under 2 seconds, p99 under 5 seconds, from event occurrence at the originating source to score availability in consuming systems.
+The architectural shift from earlier phases: Phase 1 and Phase 2 source data from the IDV MySQL reporting DB via incremental load into the team's S3. That path is too slow for sub-2-second targets. Phase 4 bypasses IDV entirely on the real-time path and ingests directly from originating source systems, processing events as they occur rather than after they've landed in a reporting DB.
+Latency budget for p95 < 2 seconds:
+● Source event capture and propagation to the streaming layer: 200–500 ms (requires direct integration with originating source, not a downstream DB)
+● Trigger evaluation and entity identification: under 100 ms (precomputed trigger map, keyed lookups)
+● Feature recomputation via online store with incremental aggregates: 200–600 ms (no recomputation from raw history; aggregates updated on event arrival)
+● Model inference: under 200 ms (model in memory, long-running service, no cold starts)
+● Rule layer and reason code mapping: under 100 ms
+● Score delivery: 200–500 ms (sync API or low-lag topic)
+3.4.1 Shared Scope
+● Define source system access patterns and integration contracts jointly across Data & AI, Application Engineering, and Vendor teams before any technical build begins — this is the gating dependency for the entire phase
+11
+● Agree on schema registry governance: who owns contract definitions at each source boundary, how breaking changes are versioned and communicated, and what the enforcement mechanism is
+● Align on equivalence tolerance: define the acceptable divergence between source-derived feature values and IDV-derived feature values before equivalence validation begins
+● Define the cutover policy from the Phase 3 interim path to the Phase 4 source-direct path: per-customer opt-in, traffic split strategy, and rollback trigger conditions
+● Align on DQ ownership at the source boundary and the policy for source schema violations
+3.4.2 Data & AI Team Scope
+● Originating source identification and access: work with the owners of each originating source system to identify available event streams or integration points, and negotiate access. This is organizational work, not just technical, and is the gating piece for the whole phase.
+● Feature audit: classify every gold-layer feature as (a) real-time-capable via incremental aggregates from source events, (b) batch-only with most-recent-batch fallback, or (c) requires refactoring.
+● Trigger map: which source event types trigger which feature recomputations for which entities
+● Equivalence validation: prove that gold-layer features computed from source events equal (within tolerance) the same features computed from IDV in the batch path.
+● Tune the rule layer for real-time context (partial-data, missing inputs, tighter latency budget)
+● Define freshness SLAs per feature
+● DQ ownership: parity tolerance, divergence thresholds, policy for failed recomputations (fall back to last batch score, defer, or skip), policy for source-event schema violations
+3.4.3 Vendor Scope
+● Rebuilt ingestion from originating source systems:
+o Direct integration with each originating source
+o Not via IDV or any other downstream reporting DB
+o Schema registry and event contracts at the source boundary
+o Replay capability from source for backfill and recovery
+● Stream processing with stateful, low-latency keyed state (Flink or equivalent)
+● Online feature store with incremental aggregate maintenance — features updated on event arrival, never recomputed from raw history on the hot path
+● Online inference service with model held in memory, no cold starts, horizontally scaled
+● Low-latency score delivery channel (sync API or sub-second-lag topic)
+● End-to-end latency monitoring from source event timestamp to score availability
+● DQ at this phase: schema-registry-enforced contracts at the source boundary; streaming-native checks for late arrivals, out-of-order events, lag; continuous parity DQ between real-time scores and the Phase 2 batch scores on the same entity-day with divergence alerts; per-entity gold-layer DQ on the recomputation path
+12
+3.4.4 Acceptance criteria
+● End-to-end latency meets target: p95 under 2 seconds and p99 under 5 seconds from originating source event timestamp to score availability, measured and reported continuously
+● Real-time scores match Phase 2 batch scores within the defined tolerance on the same entity-day, with continuous measurement and active divergence alerts
+● Source-direct ingestion is validated: events are ingested from at least one priority originating source with documented delivery guarantees and operational monitoring (throughput, lag, failures)
+● Source schema contracts are in place and enforced: schema violations are detected at the boundary, do not silently corrupt downstream data, and are observable (quarantine/dead-letter + alerts) with clear ownership for remediation
+● Replay/backfill is proven for at least one originating source family: a defined replay window can be reprocessed to reproduce feature values and scores within tolerance, with results documented
+● Equivalence is demonstrated: feature values computed from source events match (within tolerance) the corresponding batch-computed feature values over an agreed replay window, with a documented report
+● Trigger map is updated for source event types and validated: representative source events trigger the expected entity identification and feature updates, proven via repeatable tests
+● Streaming data quality controls are active for the source-direct path (e.g., duplicates, out-of-order/late events, missing required fields, pipeline lag), with documented thresholds and alerts
+● Failover is proven: under simulated source ingestion failure, the system follows the documented fallback policy to Phase 2 batch scores and the transition is observable via metrics/alerts
+● Cutover is completed per policy: opted-in customers are served by the source-direct real-time path; the interim Phase 3 real-time path is decommissioned for real-time serving, while Phase 2 batch remains the reconciliation baseline
+3.4.5 Milestones
+● M4.1: Source access negotiated for highest-priority originating sources; feature audit updated for source-direct path; trigger map updated; equivalence validation methodology agreed; schema registry governance model defined
+● M4.2: Rebuilt ingestion live in staging from highest-priority sources; schema contracts enforced at source boundary; streaming DQ active; equivalence vs. IDV-batch validated on a replay window
+● M4.3: Online feature store live with source-direct incremental aggregates; real-time inference shadow-running — source events trigger recomputation and scoring, consuming systems still use Phase 3 path; parity dashboards live
+● M4.4: Real-time source-direct scores primary for opted-in customers; Phase 3 interim path decommissioned on the real-time path; Phase 2 batch retained as daily reconciliation and fallback
+13
+3.5 Phase 5 — Continuous Everything: DataOps, MLOps, Continuous Retraining and Evaluation (longer-running, runs in parallel from Phase 2 onward)
+Customer value delivered: Sustained quality. Drift caught early, deploys routine and safe, the system auditable for enterprise customers and compliance. Extending DQ upstream to source ingestion so issues are caught at the source rather than downstream.
+This phase overlaps with Phases 2 and 3. The CI/CD foundations start during Phase 2. Continuous evaluation infra starts during Phase 2. Continuous retraining starts as soon as evaluation labels are trustworthy and provided on a regular cadence The source-ingestion DQ work starts during Phase 3 once the streaming pipeline exists to apply it to.
+Workstream A (DataOps + source DQ) ensures the data the other workstreams depend on is trustworthy and that data issues are distinguishable from model issues.
+Workstream B (MLOps) is the plumbing — it carries model artifacts from training through evaluation into production.
+Workstream C (Continuous Retraining) produces candidate models on cadence and on demand. It cannot promote anything by itself.
+Workstream D (Continuous Evaluation) is the judge. Nothing reaches production without passing it. The production model is also under its continuous watch.
+3.5.1 Shared Scope
+Phase 3
+Must have:
+● Define the eval suite, golden/reference datasets, and acceptance gates for new model versions — required before any candidate model can be assessed for production
+● Set drift thresholds and the action each triggers (alert, investigate, retrain, recalibrate, rollback)
+● Author data contracts with the IDV reporting DB as the upstream source for the event index path: what fields, what semantics, what SLAs, what is allowed to change without notice
+● Author expectations at the bronze → silver → gold transformation hops for the interim event path
+● Define the DQ-vs-drift decision tree: when a metric regression means retrain vs. investigate the IDV source
+Nice to have:
+● Decide policy for quarantined records at decision time: fail-open, fail-closed, fall back to last batch score
+● Validate that the feature set computed from the IDV-sourced event index path is stable enough to train and evaluate against
+● Full promotion path definition with automated gates — manual approval gates are sufficient for Phase 3; progressive automation is a Phase 4 target
+● Cost envelope alignment for full scheduled retraining cadence — not needed until retraining is live in Phase 4
+Phase 4
+Must have:
+14
+● Extend data contracts to each originating source system brought online in Phase 4: schema, semantics, SLAs, and change notification obligations — gating dependency for source-side DQ enforcement
+● Extend hop-level expectations to the rebuilt source-direct ingestion path (bronze → silver → gold on the new ETL)
+● Update the DQ-vs-drift decision tree for the source-direct context — new source families introduce new failure modes
+Nice to have:
+● Promotion path updated: define gates, environments, and approval points for the rebuilt path; begin transitioning from manual to automated promotion
+● Cost envelope for full scheduled retraining cadence agreed: bounded dataset sizes, run frequency, and compute allocation
+● Validate feature stability on the rebuilt source-direct path before any retraining candidate trained on it is promoted to production
+● Full auto-promotion behind feature flag — achievable in Phase 4 for well-understood candidates; manual override should remain available
+3.5.2 Data & AI Scope
+● Define training data window per run (size, recency, sampling, exclusions)
+● Continue R&D on features and models, feeding candidates into the eval harness
+3.5.3 Vendor Scope
+Phase 3
+Must Have:
+● CI/CD for code and model packaging with build, test, and deploy gates — required so any model update does not require manual infra steps
+● Model registry: every artifact linked to training data snapshot, code version, feature definitions, and eval results — required for auditability and rollback
+● Evaluation harness for champion/challenger comparison — required before any model promotion decision
+● DQ framework applied to the IDV event index ingestion path (boundary enforcement + quarantine/dead-letter) so bad events do not silently corrupt the serving path
+● Hop-level DQ expectations enforced at bronze → silver → gold for the interim path
+● Rollback verified: fire-drill required before Phase 3 goes live with real-time scores
+Nice to have:
+● Monitoring live in observation-only mode: score drift, feature health, and business KPIs (observation-only is sufficient for Phase 3; alerting and action thresholds to be tuned once data volumes are sufficient)
+● Centralized alerting with on-call integration — alerting to a shared channel is sufficient for Phase 3; on-call paging integration is a Phase 4 operational maturity item
+● Alert routing for IDV-sourced schema violations to the IDV owner, with documented ownership and escalation
+● Source-side anomaly detection on IDV (volume anomalies, semantic drift)
+● DQ promoted as a first-class CI/CD gate blocking model promotion
+15
+● Lineage tracking from any gold-layer record back to IDV source
+● Feature flag and progressive rollout (shadow → canary → full)
+Phase 4
+Must have:
+● Source-ingestion DQ extended to every originating source brought online in Phase 4: contracts enforced at each source boundary, violations quarantined/rejected, and replay/backfill supported for recovery
+● Hop-level expectations enforced on the rebuilt ETL path (bronze → silver → gold), independent of the interim path
+Nice to have:
+● Lineage tracking from any gold-layer record back to the originating source
+● DQ promoted as a first-class CI/CD gate: new model versions cannot promote unless DQ passes on training data and on a recent production sample
+● Integration of DQ metrics with drift detection, formally distinguishing “the world changed” (trigger retrain) from “the data broke” (fix upstream, do not retrain)
+● Feature flag and progressive rollout: shadow → canary → full, with verified rollback at each stage
+● Automated retraining pipeline: scheduled cadence and on-demand trigger
+● Drift-triggered retraining: feature drift or score drift triggers a retraining run, producing a candidate that enters the evaluation harness
+● Centralized alerting with on-call integration: drift, DQ, and pipeline health alerts routed with documented runbooks
+● Fully closed-loop auto-promotion: eval-passing candidates promoted behind feature flag without any manual step
+● Recalibration-only path as a distinct, cheaper alternative to full retraining when score bands shift but model structure is stable
+● First source contract violation caught at an originating source boundary and remediated upstream (DataOps)
+3.5.4 Acceptance Criteria
+Phase 3
+Must Have
+● A repeatable build-and-release process exists for data and model changes: any change is built, tested, packaged, and deployed through a gated pipeline with audit logs of what changed, when, and by whom
+● A model registry is operational: every deployed model version is linked to its training data snapshot, feature definitions, code version, evaluation results, and has a documented rollback target
+● An evaluation harness is runnable for any candidate model and produces a standardized report (metrics, slices, comparison to current champion) used as an explicit promotion gate
+● Data quality controls are enforced on the interim real-time ingestion boundary and across transformation hops; violations are detectable and do not silently corrupt serving outputs (quarantine/reject policy is documented)
+16
+● Rollback is proven: a controlled fire-drill demonstrates the ability to revert to the prior known-good model and score behavior within an agreed time objective
+● A documented “DQ vs drift” decision process exists and is exercised in at least one simulated (or real) incident to choose the correct action (remediate data vs retrain/recalibrate/rollback)
+Nice to have:
+● Monitoring is live in observation mode for model performance and feature health, with baseline thresholds documented and dashboards available for review
+● Drift alerts are fully actionable with on-call routing and documented runbooks (observation-only alerting is acceptable initially)
+● Lineage is traceable from any gold-layer record back to IDV source
+● Data quality is an automated promotion gate: demonstrate that a model release is blocked from promotion when DQ fails on training data or a recent production sample
+Phase 4
+Must have:
+● Source-ingestion data quality is operational for all originating sources in scope: contracts are enforced at the boundary, violations are quarantined (or rejected) without silent corruption, and issues are observable via metrics and logs
+● Transformation-hop expectations are enforced on the rebuilt source-direct path; failed checks prevent bad data from reaching serving outputs and are recoverable via replay/backfill
+Nice to have:
+● End-to-end lineage is available for audit: a gold-layer record can be traced back to originating source events and transformation runs used to produce it
+● Data quality is a promotion gate: demonstrate that a model release is blocked from promotion when data quality fails on training data or a recent production sample
+● DQ-vs-drift integration is demonstrated: at least one simulated (or real) event is correctly classified as “data broke” vs “world changed,” and the documented response is executed (remediate upstream vs retrain/recalibrate/rollback)
+● Champion/challenger evaluation gates promotions: no model reaches production without passing the defined evaluation gates, with decisions and artifacts logged for audit
+● Automated retraining produces deployable candidates on a schedule and on demand; each candidate enters evaluation and produces a report suitable for promotion decisions
+● Drift-triggered retraining is demonstrated: a drift signal (real or simulated) results in a candidate model entering evaluation, with outcomes recorded and reviewable
+● Progressive rollout is supported and proven: shadow and canary (or equivalent staged rollout) are executed with measurable success criteria and a verified rollback path
+● Rollback is proven on the rebuilt path via a controlled fire-drill that reverts model and/or feature changes within an agreed time objective
+● Fully closed-loop auto-promotion is demonstrated for an eval-passing candidate behind a feature flag, with manual override available
+3.5.5 Milestones
+17
+● M5.1 (early Phase 3): CI/CD for code and model packaging live with build/test/deploy gates; model registry live; evaluation harness v1 runnable end-to-end against any candidate artifact and produces a standardized report
+● M5.2 (mid Phase 3): Evaluation harness operationalized as the promotion checkpoint (manual approval acceptable); drift thresholds and “DQ vs drift” decision process documented; first tabletop exercise (or simulation) completed
+● M5.3 (Phase 3 go-live): Interim-path DQ enforcement active at the IDV event-index ingestion boundary (no silent corruption; violations are detectable and handled per documented policy) and at bronze → silver → gold hops; rollback fire-drill passed within the agreed time objective
+● M5.4 (early Phase 4): Source-ingestion DQ live for highest-priority originating sources in scope (contracts enforced at the boundary; issues observable); hop-level expectations enforced on rebuilt ETL path; “DQ vs drift” decision tree updated for source-direct context
+● M5.5 (mid Phase 4 — Nice to have): Monitoring in observation mode live (model/feature health dashboards); lineage available on rebuilt path for audit; DQ added as an automated promotion gate blocking releases when it fails
+● M5.6 (mid-to-late Phase 4 — Nice to have): Automated retraining produces candidates on a schedule and on demand; drift-triggered retraining demonstrated on a real or simulated drift event; champion/challenger gating used for at least one promotion decision
+● M5.7 (Phase 4 completion — Nice to have): Progressive rollout (shadow → canary → full) proven with rollback at each stage

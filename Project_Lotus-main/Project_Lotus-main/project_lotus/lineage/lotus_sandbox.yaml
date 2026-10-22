@@ -1,0 +1,147 @@
+# Complete Lotus configuration. Pass ONLY this YAML; it includes the client's
+# base defaults. Do not combine it with the original dev/sandbox CSV overlays.
+# The runtime ZIP contains the pure-Python PyYAML 6.0.2 dependency.
+# S3 bucket names use hyphens; Glue database names use underscores.
+# All Gold Iceberg tables must already exist at the intended Gold S3 locations.
+
+catalog:
+  profile: glue
+  name: glue_catalog
+  # Iceberg was enabled on your EMR cluster through Terraform. The supplied
+  # spark-submit arguments reuse that named catalog and its credentials.
+  manage_spark_conf: false
+  glue:
+    warehouse: s3://lotus-sandbox-gold-curated-data/tables/
+
+spark:
+  app_name_prefix: lotus_gold
+  session_timezone: America/Toronto  # Matches our deployed Silver YAMLs.
+  log_level: WARN
+  checkpoint_dir: s3://lotus-sandbox-gold-curated-data/control/checkpoints/
+  conf:
+    spark.sql.session.timeZone: America/Toronto
+    spark.sql.caseSensitive: "false"
+    spark.sql.ansi.enabled: "true"
+    spark.sql.storeAssignmentPolicy: ANSI
+    spark.sql.adaptive.enabled: "true"
+    spark.sql.adaptive.coalescePartitions.enabled: "true"
+    spark.sql.shuffle.partitions: "200"
+    spark.sql.parquet.compression.codec: snappy
+    spark.executorEnv.TZ: America/Toronto
+    spark.yarn.appMasterEnv.TZ: America/Toronto
+  extra_conf: {}
+
+runtime:
+  stop_spark: true
+
+sources:
+  account_changes_batch:
+    mode: table
+    table: glue_catalog.lotus_sandbox_silver_conformed.account_changes_batch
+    watermark_column: ingestion_ts
+    column_aliases: {}
+  device_lookup_batch:
+    mode: table
+    # This is the Silver name used by our deployed pipeline. If your registered
+    # Glue table is actually named device_change_batch, change only this value.
+    table: glue_catalog.lotus_sandbox_silver_conformed.device_lookup_batch
+    watermark_column: ingestion_ts
+    column_aliases: {}
+  # Optional inputs are disabled for this first deployment, which has only the
+  # two carrier tables. Enable each feed when its Silver table and permissions
+  # are ready. When enabled, an absent table produces an empty typed frame;
+  # an existing table must match the contract, even if empty. Permission/schema
+  # errors fail visibly. The job never creates/writes Silver/enrichment tables.
+  tu_portps:
+    enabled: true
+    mode: table
+    table: glue_catalog.lotus_sandbox_silver_conformed.tu_portps
+    watermark_column: ingestion_ts
+  mno_activation:
+    enabled: true
+    mode: table
+    table: glue_catalog.lotus_sandbox_silver_conformed.mno_activation
+    # Arrival time, not the possibly historical time of the API request.
+    watermark_column: created_ts
+  imei:
+    enabled: false
+    mode: table
+    table: glue_catalog.lotus_sandbox_silver_conformed.imei
+    watermark_column: created_ts
+    # The supplied lineage job does not consume this identity API table.
+    # msisdn_imei_map is built from device_lookup_batch instead.
+
+slice:
+  max_iterations: 20
+  require_convergence: true
+  max_size: 5000000
+  inline_limit: 20000
+
+# Client business rules, retained from conf/lineage/base.yaml.
+windows:
+  rogers_status_lookahead_days: null
+  mno_port_window_days: 10
+  port_high_confidence_days: 3
+  rogers_msisdn_overlap_tolerance_days: 1
+  rogers_imsi_reuse_max_gap_days: null
+  number_change_match_window_days: 5
+  telus_plan_change_window_hours: 24
+  number_recycle_threshold_days: 90
+  max_chain_depth: 50
+accounts:
+  imsi_link_min_confidence: LOW
+normalized:
+  event_weights: {}
+imei_map:
+  close_on_lifecycle_end: true
+write:
+  max_delete_ratio: 0.25
+  # Use the client's MERGE-then-scoped-DELETE path on Spark 3.5. It also supports
+  # large distributed slices. Run downstream work only after the whole job passes.
+  use_not_matched_by_source: false
+
+sinks:
+  account_changes_canonical_events:
+    mode: iceberg
+    table: glue_catalog.lotus_sandbox_gold_curated.account_changes_canonical_events
+
+  msisdn_lifecycle:
+    mode: iceberg
+    table: glue_catalog.lotus_sandbox_gold_curated.msisdn_lifecycle
+
+  msisdn_lifecycle_account_mapping:
+    mode: iceberg
+    table: glue_catalog.lotus_sandbox_gold_curated.msisdn_lifecycle_account_mapping
+
+  msisdn_lifecycle_account_customer_mapping:
+    mode: iceberg
+    table: glue_catalog.lotus_sandbox_gold_curated.msisdn_lifecycle_account_customer_mapping
+
+  normalized_canonical_events:
+    mode: iceberg
+    table: glue_catalog.lotus_sandbox_gold_curated.normalized_canonical_events
+
+  msisdn_imei_map:
+    mode: iceberg
+    table: glue_catalog.lotus_sandbox_gold_curated.msisdn_imei_map
+
+run_control:
+  mode: iceberg
+  table: glue_catalog.lotus_sandbox_gold_curated.gold_run_control
+
+  manifest_root: s3://lotus-sandbox-gold-curated-data/control/manifests/
+  summary_root: s3://lotus-sandbox-gold-curated-data/run-artifacts/
+
+dq:
+  enrichment:
+    tu_event_max_days_after_ingestion: 1
+    tu_event_max_days_before_first_seen: 7300
+    tu_modal_hour_max_drift_hours: 1
+  severity_overrides: {}
+  severity_overrides_by_table: {}
+  output:
+    mode: iceberg
+    table: glue_catalog.lotus_sandbox_gold_curated.dq_metrics
+
+    partition_by: [check_date]
+

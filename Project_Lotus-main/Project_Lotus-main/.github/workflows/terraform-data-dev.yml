@@ -1,0 +1,37 @@
+name: Terraform, data-dev
+
+# Calls the shared pipeline in dev/terraform-actions. This repository does not
+# define how plan and apply run: CI role trust pins job_workflow_ref to that
+# file, so a pipeline defined here would produce a token STS refuses.
+
+on:
+  push:
+    branches: [main]
+    paths: ['accounts/data-dev/**']
+  pull_request:
+    paths: ['accounts/data-dev/**']
+
+jobs:
+  # No needs: between the two. Ordering enforces itself, because an infra plan
+  # that depends on something the security root has not created yet fails on
+  # the missing data source and names it. A needs: would instead skip infra
+  # whenever security has no changes.
+  infra:
+    uses: dev/terraform-actions/.github/workflows/terraform.yml@main
+    permissions:
+      id-token: write
+      contents: read
+    with:
+      environment: data-dev-infra
+      working_directory: accounts/data-dev/infra
+      terraform_version: "1.15.8"
+
+  security:
+    uses: dev/terraform-actions/.github/workflows/terraform.yml@main
+    permissions:
+      id-token: write
+      contents: read
+    with:
+      environment: data-dev-security
+      working_directory: accounts/data-dev/security
+      terraform_version: "1.15.8"

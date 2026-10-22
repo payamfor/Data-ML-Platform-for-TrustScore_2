@@ -1,0 +1,66 @@
+# =============================================================================
+# Feature engineering - the data-sandbox account
+# =============================================================================
+# Loaded on top of conf/base.yaml. Names come from the DE team's Terraform
+# (accounts/data-sandbox/infra) and the ML config
+# (project_lotus/sagemaker/conf/ml/sandbox.yaml):
+#   Gold Glue database    gold_glue_database_name  = lotus_sandbox_gold_curated
+#   Silver Glue database  glue_database_name       = lotus_sandbox_silver_conformed
+#   training_root         s3://lotus-sandbox-sagemaker-data/mock-data/version1/train/
+#   testing_root          s3://lotus-sandbox-sagemaker-data/mock-data/version1/test/
+#   EventBridge triggers  mock-data/version1/train/*_SUCCESS  -> training
+#                         mock-data/version1/test/*_SUCCESS   -> scoring
+#
+# Literal values rather than ${...}: on EMR the driver does not inherit the
+# submitting shell's environment.
+# =============================================================================
+
+features:
+  output_root: s3://lotus-sandbox-ml-preprocessing-data/preprocessing_data/version2/
+
+  # ---- data split -----------------------------------------------------------
+  # Dynamic train/test split percentages and random seed for reproducible splits.
+  data_split:
+    train_percentage: 80
+    test_percentage: 20
+    random_seed: 42
+
+  # ---- inputs ----------------------------------------------------------------
+  # glue_catalog.<database>.<table>; an s3:// path is read as parquet instead.
+  inputs:
+    lineage_table: s3://lotus-sandbox-ml-preprocessing-data/aws_inputs/scoring/gold/tables/dataset=msisdn_lifecycle_account_customer_mapping/version=1/data/part-00000.parquet
+    account_changes_table: s3://lotus-sandbox-ml-preprocessing-data/aws_inputs/scoring/gold/tables/dataset=account_changes_canonical_events/version=1/data/part-00000.parquet
+    enstream_table: s3://lotus-sandbox-ml-preprocessing-data/aws_inputs/scoring/silver/tables/dataset=audit_trail_services_3/version=1/data/part-00000.parquet
+    hash_mapping_table: s3://lotus-sandbox-ml-preprocessing-data/aws_inputs/scoring/silver/tables/dataset=device_lookup_batch/version=1/data/part-00000.parquet
+
+  # ---- fraud labels (PRD: "fraud labels from telcos and banks") ---------------
+  # NBC onboarding fraud, in the Cross-Sector Data Exchange database. The PRD's
+  # label schema identifies the line by phone_number_AC_hash (not customer_id),
+  # so `phone_number_col` is set and the job maps each label to the customer
+  # who held that number at fraud_timestamp (read_fraud_labels_by_phone).
+  # CONFIRM on AWS: the column names below match the real table, and the EMR job
+  # role has Lake Formation SELECT on it. fraud_source must equal the ML
+  # config's data.fraud_sources (NBC-v1.0).
+  # table: glue_catalog.cross_sector_data_exchange.onboarding_nbc
+  fraud_labels:
+    table: glue_catalog.lotus_sandbox_gold_curated.onboarding_nbc
+    phone_number_col: phone_number_AC_hash
+    fraud_type_col: fraud_type
+    fraud_timestamp_col: fraud_timestamp
+    fraud_source: NBC-v1.0
+
+  run_control:
+    table: glue_catalog.lotus_sandbox_gold_curated.feature_engineering_run_control
+
+  # ---- Spark: the Glue Iceberg catalog the table names above resolve in ------
+  # (the Iceberg extension and runtime jar are added by
+  # scripts/submit_emr_serverless.py, because they must be set before the
+  # session starts).
+  # Use HadoopFileIO on EMR so S3 reads/writes use EMRFS and the step runtime role,
+  # avoiding S3FileIO IMDS credential failures on YARN executor containers.
+  spark_conf:
+    spark.sql.catalog.glue_catalog: org.apache.iceberg.spark.SparkCatalog
+    spark.sql.catalog.glue_catalog.catalog-impl: org.apache.iceberg.aws.glue.GlueCatalog
+    spark.sql.catalog.glue_catalog.io-impl: org.apache.iceberg.hadoop.HadoopFileIO
+    spark.sql.catalog.glue_catalog.warehouse: s3://lotus-sandbox-gold-curated-data/
+    spark.sql.catalog.glue_catalog.client.region: ca-central-1

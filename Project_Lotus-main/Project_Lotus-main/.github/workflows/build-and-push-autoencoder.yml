@@ -1,0 +1,262 @@
+name: Build and Push Autoencoder Images
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "project_lotus/sagemaker/**"
+      - ".github/workflows/build-and-push-autoencoder.yml"
+
+  workflow_call:
+    inputs:
+      environment:
+        required: true
+        type: string
+      aws_region:
+        required: true
+        type: string
+      TRAINING_ECR_REPOSITORY:
+        required: true
+        type: string
+      INFERENCE_ECR_REPOSITORY:
+        required: true
+        type: string
+      aws_account_id:
+        required: true
+        type: string
+      run_training:
+        description: "Build/push the training image."
+        required: false
+        type: boolean
+        default: false
+      run_inference:
+        description: "Build/push the inference image."
+        required: false
+        type: boolean
+        default: false
+
+  workflow_dispatch:
+    inputs:
+      run_training:
+        description: "Build/push training image"
+        required: true
+        type: boolean
+        default: true
+      run_inference:
+        description: "Build/push inference image"
+        required: true
+        type: boolean
+        default: true
+
+env:
+  AWS_REGION: ca-central-1
+  AWS_ACCOUNT_ID: "162591926854"
+  TRAINING_ECR_REPOSITORY: lotus-sandbox-model_autoencoder_training
+  INFERENCE_ECR_REPOSITORY: lotus-sandbox-model_autoencoder_inference
+
+jobs:
+
+  # ------------------------------------------------------
+  # Resolve the two independent execution flags.
+  # ------------------------------------------------------
+  detect-changes:
+    name: Detect autoencoder changes
+    runs-on: ubuntu-latest
+    outputs:
+      run_training: ${{ steps.flags.outputs.run_training }}
+      run_inference: ${{ steps.flags.outputs.run_inference }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Calculate autoencoder flags
+        id: flags
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BEFORE_SHA: ${{ github.event.before }}
+          CURRENT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+
+          if [[ "$EVENT_NAME" == "workflow_call" ]]; then
+            echo "run_training=${{ inputs.run_training }}" >> "$GITHUB_OUTPUT"
+            echo "run_inference=${{ inputs.run_inference }}" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            echo "run_training=${{ inputs.run_training }}" >> "$GITHUB_OUTPUT"
+            echo "run_inference=${{ inputs.run_inference }}" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          BASE="$BEFORE_SHA"
+          HEAD="$CURRENT_SHA"
+
+          if [[ -z "$BASE" || "$BASE" == "0000000000000000000000000000000000000000" ]]; then
+            run_training=true
+            run_inference=true
+          else
+            FILES="$(git diff --name-only "$BASE" "$HEAD")"
+
+            echo "Changed files:"
+            printf '%s\n' "$FILES"
+
+            run_training=false
+            run_inference=false
+
+            while IFS= read -r file; do
+              [[ -z "$file" ]] && continue
+
+              case "$file" in
+                project_lotus/sagemaker/jobs/training/* | project_lotus/sagemaker/trust_score_05/* | project_lotus/sagemaker/conf/*)
+                  run_training=true
+                  ;;
+                project_lotus/sagemaker/jobs/inference/*)
+                  run_inference=true
+                  ;;
+                .github/workflows/build-and-push-autoencoder.yml)
+                  run_training=true
+                  run_inference=true
+                  ;;
+              esac
+            done <<< "$FILES"
+          fi
+
+          echo "run_training=$run_training" >> "$GITHUB_OUTPUT"
+          echo "run_inference=$run_inference" >> "$GITHUB_OUTPUT"
+
+  build-and-push:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.run_training == 'true' || needs.detect-changes.outputs.run_inference == 'true'
+    runs-on: ubuntu-latest
+    environment: data-sandbox-infra
+
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Free Up Runner Disk Space
+        shell: bash
+        run: |
+          echo "=== Disk space before cleanup ==="
+          df -h
+
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /usr/local/share/boost
+          sudo rm -rf "$AGENT_TOOLSDIRECTORY"
+
+          docker system prune -a -f --volumes
+
+          echo "=== Disk space after cleanup ==="
+          df -h
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ inputs.aws_account_id || env.AWS_ACCOUNT_ID }}:role/lotus-sandbox-ecr-push-role
+          role-session-name: github-ecr-push-${{ github.run_id }}
+          aws-region: ${{ inputs.aws_region || env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set image metadata
+        id: meta
+        shell: bash
+        run: |
+          REGISTRY="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+          SHA_TAG="${GITHUB_SHA}"
+
+          TRAINING_IMAGE_URI="${REGISTRY}/${TRAINING_ECR_REPOSITORY}:${SHA_TAG}"
+          INFERENCE_IMAGE_URI="${REGISTRY}/${INFERENCE_ECR_REPOSITORY}:${SHA_TAG}"
+
+          echo "registry=${REGISTRY}" >> "$GITHUB_OUTPUT"
+          echo "training_image_uri=${TRAINING_IMAGE_URI}" >> "$GITHUB_OUTPUT"
+          echo "inference_image_uri=${INFERENCE_IMAGE_URI}" >> "$GITHUB_OUTPUT"
+
+      # ======================================================
+      # TRAINING IMAGE
+      # ======================================================
+      - name: Check training image
+        id: check-training
+        if: needs.detect-changes.outputs.run_training == 'true'
+        shell: bash
+        run: |
+          if aws ecr describe-images \
+            --repository-name "${TRAINING_ECR_REPOSITORY}" \
+            --image-ids imageTag="${GITHUB_SHA}" \
+            --region "${AWS_REGION}" \
+            >/dev/null 2>&1
+          then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build training image
+        if: needs.detect-changes.outputs.run_training == 'true' && steps.check-training.outputs.exists != 'true'
+        shell: bash
+        run: |
+          docker build \
+            -f project_lotus/sagemaker/jobs/training/Dockerfile \
+            -t "${{ steps.meta.outputs.training_image_uri }}" \
+            project_lotus/sagemaker
+
+      - name: Push training image
+        if: needs.detect-changes.outputs.run_training == 'true' && steps.check-training.outputs.exists != 'true'
+        shell: bash
+        run: |
+          docker push "${{ steps.meta.outputs.training_image_uri }}"
+
+      # ======================================================
+      # INFERENCE IMAGE
+      # ======================================================
+      - name: Check inference image
+        id: check-inference
+        if: needs.detect-changes.outputs.run_inference == 'true'
+        shell: bash
+        run: |
+          if aws ecr describe-images \
+            --repository-name "${INFERENCE_ECR_REPOSITORY}" \
+            --image-ids imageTag="${GITHUB_SHA}" \
+            --region "${AWS_REGION}" \
+            >/dev/null 2>&1
+          then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build inference image
+        if: needs.detect-changes.outputs.run_inference == 'true' && steps.check-inference.outputs.exists != 'true'
+        shell: bash
+        run: |
+          docker build \
+            -f project_lotus/sagemaker/jobs/inference/Dockerfile \
+            -t "${{ steps.meta.outputs.inference_image_uri }}" \
+            project_lotus/sagemaker
+
+      - name: Push inference image
+        if: needs.detect-changes.outputs.run_inference == 'true' && steps.check-inference.outputs.exists != 'true'
+        shell: bash
+        run: |
+          docker push "${{ steps.meta.outputs.inference_image_uri }}"
+
+      - name: Display image URIs
+        shell: bash
+        run: |
+          echo "Autoencoder pipeline flags:"
+          echo "  Training : ${{ needs.detect-changes.outputs.run_training }}"
+          echo "  Inference: ${{ needs.detect-changes.outputs.run_inference }}"

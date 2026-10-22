@@ -1,0 +1,296 @@
+# Trust Score 0.5 Evaluation Strategy
+
+# TS0.5 Evaluation Strategy (Technical)
+
+## 1. POC Bake-off
+
+### 1.1 Purpose and scope (TS0.5)
+
+**Goal:** Validate that TS0.5 can rank risk better than D4/rules and stay reliable as fraud patterns change, under positive–unlabeled (PU) constraints (only confirmed fraud labels; “non-fraud” is mostly unlabeled).
+
+**Output:** evidence pack for “is it worth moving to TS0.5 MVP/production”, including only performance and drift, and excluding reason-code and suspicion tiering quality.
+
+**Inputs**
+
+- Historical features available at scoring time
+- Confirmed fraud labels
+- Baselines: D4/rules outputs for same records
+
+**Outputs**
+
+- A single **continuous trust score** (derived from anomaly score)
+- Top-k list per evaluation window
+
+### 1.2 Evaluation design: temporal forward-chaining (no leakage)
+
+**Principle:** Always evaluate forward in time, never backwards, to respect real-world deployment order and detect drift.
+
+**Windows:** Split 2024–2025 into **monthly or quarterly** windows.
+
+**Procedure (walk-forward / rolling origin):**
+
+For each split `t`:
+
+- **Train/fit** (or calibrate thresholds) on data up to end of window `t`
+- **Test** on window `t+1` only
+- Record metrics and compare vs baseline (D4/rules)
+- Roll forward and repeat
+
+**Why:**
+
+- Prevents “future signal leakage”
+- Produces a trend line of performance (detects drift, seasonality, adversarial adaptation)
+
+### 1.3 Data setup (PU reality)
+
+We maintain 3 “buckets” for every evaluation window:
+
+1. **Confirmed fraud positives (P):** partner-confirmed incidents within the window (plus lag-handling; see below)
+2. **Unlabeled (U):** everything else (mixture of true negatives + undetected fraud)
+3. **Baseline flags:** D4/rules outputs and tiers for the same population
+
+### 1.4 What we evaluate (TS0.5 model outputs)
+
+TS0.5 typically produces:
+
+- **Anomaly score / risk score** (continuous)
+- **Top-k ranked list** (the “most suspicious” entities)
+
+We evaluate 3 aspects:
+
+1. **Ranking quality** (does it put known fraud at the top?)
+2. **Incremental lift vs D4/rules** (does it find fraud D4 misses?)
+3. **Stability/drift** (does performance degrade as patterns shift?)
+
+### 1.5 Metrics you can trust under PU constraints
+
+Because negatives are unknown, classical precision/recall are biased. We use metrics that remain meaningful:
+
+**A) Recall@Top-k (primary KPI)**
+
+For each window:
+
+- Take the **top k** highest-risk cases by TS0.5 score
+- Compute:
+    
+    **Recall@k = (# confirmed fraud in top-k) / (total confirmed fraud in window)**
+    
+
+**Notes:**
+
+- Choose k based on ops capacity (e.g., k = 100/day equivalent) or business target
+- Report multiple k values (k1, k2, k3) to show the curve
+
+**B) “Lower-bound” Precision@Top-k (secondary KPI)**
+
+- **Precision_lb@k = (# confirmed fraud in top-k) / k**
+
+This is a **lower bound** because many “false positives” may be real fraud not yet detected.
+
+**C) Score distribution separation**
+
+For each window, compare anomaly score distributions:
+
+- `score(P)` vs `score(U)`
+    
+    A working model shows confirmed fraud clustering in the **high-score tail**.
+    
+
+Track separation with:
+
+- **KS statistic** or
+- **top-decile concentration** (what % of fraud is in top 10% of scores)
+
+**D) Lift curves vs baseline (D4/rules)**
+
+Compute deciles (or percentiles) of TS0.5 scores and measure:
+
+- **Lift(decile d) = (fraud rate among top d% by TS0.5) / (fraud rate overall)**
+
+Then compare to:
+
+- Lift of D4/rules tiers (or D4 score)
+
+This shows **incremental value** over what we already sell.
+
+### 1.6 Reporting template (every window)
+
+For each month/quarter window produce:
+
+- Summary table: Recall@k, Precision_lb@k, Lift@deciles (TS0.5 vs D4)
+- Charts: score distributions, lift curves, metrics trend line over time
+- Breakdown by fraud type
+- Top new wins: “fraud caught by TS0.5 but not flagged by D4”
+- Drift notes + recommended model/threshold adjustments
+
+## 2. MVP → Production
+
+### 2.1 What MVP/Production is trying to answer
+
+**Four questions:**
+
+1. *Can we turn the score into stable, controllable operational tiers (High/Med/Low)?*
+2. *Can we explain why we flagged something (reason codes) in a way clients trust and can act on?*
+3. *Does it work reliably over time with drift monitoring and re-calibration?*
+4. *Can we ship safely (SLAs, monitoring, QA, governance)?*
+
+### 2.2 Technical scope (MVP/Prod)
+
+**Inputs**
+
+- Everything from PoC, plus:
+- Feature completeness checks / missingness handling
+- Real-time constraints (latency, availability, backfills)
+- Client policy constraints (different appetites for risk and review volume)
+
+**Outputs**
+
+1. Risk score (same as PoC, but now calibrated)
+2. Suspicion tier (e.g., Tier 1–4 or High/Med/Low)
+3. Reason codes (top N drivers / rules / pattern reasons)
+4. Recommended action hooks (optional): review / step-up / block / monitor
+
+### 2.3 Evaluation design (MVP/Prod)
+
+Still uses **temporal forward-chaining**, but expands evaluation dimensions:
+
+**1) Tiering & calibration evaluation (new)**
+
+**Goal:** map continuous score → discrete tiers that match business capacity and expected risk.
+
+Evaluate:
+
+- Volume stability: Tier thresholds produce predictable counts per day/week
+- Fraud capture per tier: confirmed fraud rate and recall contribution by tier
+- Cross-client portability: do thresholds generalize or need per-client calibration?
+- Calibration curves: does a higher score truly mean “more likely fraud” (even with PU constraints, we can validate monotonicity + stability)
+
+Key operational metric:
+
+- Recall at fixed alert volume (same as PoC, now formalized as SLO)
+
+**2) Reason code quality evaluation (new)**
+
+Reason codes must be:
+
+- Accurate: correspond to real signals/features that changed
+- Stable: don’t flap unpredictably window-to-window
+- Actionable: lead to an operational decision (step-up, hold, investigate)
+- Non-sensitive: don’t expose restricted attributes; remain policy-safe
+
+Measure:
+
+- Coverage: % of top-tier alerts with ≥1 reason code
+- Consistency tests: reason present when driver features are present
+- Agreement with investigator feedback: sampled QA review (“does this make sense?”)
+- Reason distribution drift: monitor shifts in top reasons (attack adaptation signal)
+
+**3) End-to-end operational metrics (new)**
+
+- Latency & throughput: can it score within target time?
+- Data freshness: does it degrade when inputs are delayed?
+- Incident response: drift alarms, threshold auto-adjust or recommended adjustment
+- False positive management: because PU, we track “confirmed non-fraud” only where available (investigator dispositions, chargebacks reversed, etc.)
+
+### Deliverables (MVP/Prod)
+
+- Everything from PoC, plus:
+    - Tier definition spec: tier thresholds, expected volumes, SLA assumptions
+    - Calibration report: stability of tier volumes + capture efficiency
+    - Reason code dictionary: definitions, examples, mapping to features/signals
+    - Operational playbook: monitoring, drift triggers, retraining/recalibration cadence
+    - QA results: sampled case studies per tier with reason codes
+
+# TS0.5 Evaluation Strategy (Non-Technical Translation)
+
+## **1. POC Bake-off**
+
+### What we’re trying to prove
+
+We want to prove TS0.5 can do three things better than today’s D4/rules:
+
+1. Catch more real fraud with the same review effort
+2. Find the right suspects first (so investigators look at the best leads)
+3. Stay effective as fraud changes over time (fraudsters adapt)
+    
+    ### Why we test “forward in time”
+    
+    Fraud changes month to month. So we test TS0.5 the same way it will run in production:
+    
+    - We “train” it on the past
+    - Then we test it on the next month/quarter
+    - Then we repeat, moving forward across 2024–2025
+    
+    This shows whether TS0.5 still works when fraud patterns drift.
+    
+    ### The key challenge: we don’t know all the “good” cases
+    
+    We only know the cases that were confirmed fraud. For the rest, many might be fine, but some could be fraud nobody caught yet.
+    
+    So instead of pretending we know every “good” case, we measure performance in a way that is fair and honest.
+    
+    ### The main success metric: “How many known frauds show up in our Top list?”
+    
+    Think of TS0.5 as producing a ranked list of the most suspicious cases.
+    
+    We measure:
+    
+    - Of the fraud we *know about*, what % appears in the Top 100 / Top 1,000 / Top X cases?
+    
+    That’s the most reliable signal we have.
+    
+    ### Additional proof points we will show
+    
+    - Lower-bound precision: Among the Top list, how many are confirmed fraud (this is conservative because some “not confirmed” may actually be fraud)
+    - Lift vs D4: If an investigator only has time to look at the top 10% most suspicious cases, does TS0.5 surface more fraud than D4 would?
+    - Stability over time: Does TS0.5 keep performing month after month, or does it fade when criminals change tactics?
+    
+    ### **Proceed from PoC to MVP if, across most time windows:**
+    
+    - TS0.5 improves Recall@k at a fixed review volume vs baseline, and
+    - Lift curves show consistent advantage (fraud packed more tightly at the top), and
+    - Performance doesn’t collapse in later windows (manageable drift).
+
+## 2. MVP → Production
+
+### What we’re trying to prove
+
+PoC proved “the model can rank risk better.”
+
+MVP → Production proves “we can ship this safely and customers can use it.”
+
+We want to prove TS0.5 can:
+
+1. Turn scores into clear Suspicion Tiers (e.g., High / Medium / Low) that match customer operations
+2. Explain why something is risky (reason codes) so clients trust it and can act on it
+3. Deliver consistent results over time even as fraud patterns evolve
+4. Run reliably in production (stable volumes, monitoring, and clear operating playbooks)
+
+### What we measure for MVP → Production success
+
+We still measure the PoC metrics (e.g., “how many known frauds appear at the top”), but we add product-grade measures:
+
+1. **Fraud capture at a fixed review volume**
+    - “If a customer can review 500 cases/day, does TS0.5 catch more confirmed fraud than D4 at the same workload?”
+2. **Tier performance**
+    - Is fraud concentrated in **High** more than Medium/Low?
+    - Are the tier volumes stable day to day?
+3. **Reason code quality**
+    - Do most High-tier alerts have reason codes?
+    - Do the reasons make sense to investigators and clients?
+    - Are reasons stable (not random or constantly shifting)?
+4. **Stability over time (drift readiness)**
+    - Does performance stay strong month after month?
+    - If fraud patterns change, do we detect it and adjust thresholds/models safely?
+5. **Production readiness**
+    - Reliability, monitoring, and operational playbooks are in place so we can support customers confidently.
+
+### MVP → Production “Go” criteria
+
+We ship when:
+
+- The High tier consistently outperforms D4 at the same review volume
+- Tier volumes are predictable and controllable
+- Reason codes are clear, stable, and useful for action
+- We can monitor drift and have a plan to recalibrate over time
+- The system meets production reliability expectations

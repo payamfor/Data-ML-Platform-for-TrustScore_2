@@ -1,0 +1,692 @@
+# Data Catalog - Raw
+
+**Last Updated:** YYYY-MM-DD
+
+**Owner:** Data & AI Team
+
+## Change Log
+
+| Date | Author | Change |
+| --- | --- | --- |
+| 2026-02-24 | Moein | Initial catalog |
+| 2026-03-26 | Sherry | Update on 2.4-2.9 raw data |
+|  |  |  |
+
+---
+
+## Table of Content
+
+- Raw Data Sources
+    - 2.4 account_changes_batch.csv
+    - 2.5 audit_trail_response_2.csv
+    - 2.6 audit_trail_services_3.csv.gz
+    - 2.7 audit_trail.csv
+    - 2.8 device_lookup_batch.csv.gz
+    - 2.9 linetype_response.csv
+
+**Notes: Sections 2.4–2.9 have been modified in the Silver layer. Please refer to the Data Catalog – Preprocessed for details.**
+
+---
+
+- glue_db_trust_score_v1_poc
+    
+    bell_badactors
+    
+    changes_table
+    
+    mysql_account_changes_batch
+    
+    mysql_atr_api_calls
+    
+    mysql_atr_api_calls_v2
+    
+    mysql_atr_v1_account_change_age
+    
+    mysql_atr_v1_account_status
+    
+    mysql_atr_v1_account_type
+    
+    mysql_atr_v1_activation_date
+    
+    mysql_atr_v1_age_verification
+    
+    mysql_atr_v1_application_protect
+    
+    mysql_atr_v1_check_recycled
+    
+    mysql_atr_v1_check_user_integrity
+    
+    mysql_atr_v1_custom_service
+    
+    mysql_atr_v1_data_matching
+    
+    mysql_atr_v1_detailed_identity_verification
+    
+    mysql_atr_v1_device_information
+    
+    mysql_atr_v1_get_mobile_token
+    
+    mysql_atr_v1_insurance_premium_validator
+    
+    mysql_atr_v1_msisdn_retrieval
+    
+    mysql_atr_v1_msisdn_verification
+    
+    mysql_atr_v1_tokenized_msisdn
+    
+    mysql_atr_v1_trust_score
+    
+    mysql_atr_v2_account_change_age
+    
+    mysql_atr_v1_data_matching
+    
+    mysql_atr_v1_detailed_identity_verification
+    
+    mysql_atr_v1_device_information
+    
+    mysql_atr_v1_get_mobile_token
+    
+    mysql_atr_v1_insurance_premium_validator
+    
+    mysql_atr_v1_msisdn_retrieval
+    
+    mysql_atr_v1_msisdn_verification
+    
+    mysql_atr_v1_tokenized_msisdn
+    
+    mysql_atr_v1_trust_score
+    
+    mysql_atr_v2_account_change_age
+    
+    mysql_atr_v2_msisdn_retrieval
+    
+    mysql_atr_v2_trust_score
+    
+    mysql_device_lookup_batch*
+    
+    mysql_hash_mapping
+    
+    rogers_badactors
+    
+    telco_verify_poc_bell_labels
+    
+    telco_verify_poc_rogers_labels
+    
+    telco_verify_poc_telus_labels
+    
+    telus_labels
+    
+    account_changes_batch(Bronze)
+    
+    ---
+    
+
+## Raw Data Sources
+
+---
+
+### 2.4 account_changes_batch
+
+| Attribute | Value |
+| --- | --- |
+| **S3 Location** | `s3://enstream-lake-bronze-dev/landing/account_changes_batch.csv` |
+| **Format** | Parquet |
+| **Description** | batch records of account changes |
+| **Owner** | Data Engineering |
+| **PII** | Yes (id, change_key) |
+| **Primary Key** | id |
+| **Foreign Key** | change_key (mno for silver layer) |
+| **Jupyter Notebook** | `shared/SherryShi/account_changes_batch_cleaning.ipynb` |
+
+**Schema:**
+
+| Column | Type | Description | Example |
+| --- | --- | --- | --- |
+| `id` | STRING | Unique record identifier | `1611966072` |
+| `change_key` | STRING | Hashed identifier for the change event | `88cb41e3ed604aee1bec1a5b886b7d92941b1168a488ce36d6d72f24189ff5e9` |
+| `change_type` | STRING | Type of change event (e.g., SIM or device change) | `SIM_CHANGE` |
+| `notes` | STRING | Additional metadata in JSON format related to the change event | `{subId:fc33a85d3a23fad9d0a2e60a5de4ba793fa439c4cb7522090b2c5e57cd634acf}` |
+| `timestamp` | STRING | Event timestamp | `2023-11-26 01:02:07` |
+
+**Access (Python):**
+
+```python
+s3_path = "s3://enstream-lake-bronze-dev/landing/account_changes_batch.csv"
+df = spark.read.option("header", True).csv(s3_path)
+```
+
+Data Quality Notes:
+
+- Bell (total rows: 18998917)
+    - Accuracy:
+        
+        All fields have 100% accuracy
+        
+    - Completness:
+        
+        All columns have 100% completeness (no missing values).
+        
+    - Consistency:
+        - id values are consistently numeric.
+        - change_key values follow a consistent 64-character hexadecimal format.
+        - change_type values are consistently represented within a standardized set:
+        OWNERSHIP_CHANGE, ADDRESS_CHANGE, STATUS_CHANGE-S, STATUS_CHANGE-C, STATUS_CHANGE-A, STATUS_CHANGE-AA.
+        - timestamp values follow a consistent format yyyy-MM-dd HH:mm:ss.
+        - notes values are consistently represented as either JSON or \N, with JSON structures following the defined schema (mno, subId, msisdnChangeSide, correlationId, otherMSISDN).
+    - Consistency:
+        - id values are consistently numeric.
+        - change_key values follow a consistent 64-character hexadecimal format.
+        - change_type values are consistently represented within a standardized set:
+        OWNERSHIP_CHANGE, ADDRESS_CHANGE, STATUS_CHANGE-S, STATUS_CHANGE-C, STATUS_CHANGE-A, STATUS_CHANGE-AA.
+        - timestamp values follow a consistent format yyyy-MM-dd HH:mm:ss.
+        - notes values are consistently represented as either JSON or \N, with JSON structures following the defined schema (mno, subId, msisdnChangeSide, correlationId, otherMSISDN).
+    - Uniqueness:
+        
+        Only the id field is unique, while other columns are expected to contain repeated values.
+        
+    - Timeliness:
+        
+        min_time: 2017-11-26
+        max_time: 2026-03-14
+        
+- Rogers (total rows: 130631838)
+    - Accuracy:
+        
+        All fields have 100% accuracy; however, the notes field contains \N, which accounts for 57.24% of the data and indicates a proportion of missing information.
+        
+    - Completness:
+        
+        All columns have 100% completeness (no missing values).
+        
+    - Consistency:
+        - id values are consistently numeric.
+        - change_key values follow a consistent 64-character hexadecimal format.
+        - change_type values are consistently represented within a standardized set:
+        MSISDN_CHANGE, DEVICE_CHANGE, SIM_CHANGE, STATUS_CHANGE-S, STATUS_CHANGE-C, STATUS_CHANGE-A, MSISDN_CHANGE_FROM.
+        - timestamp values follow a consistent format yyyy-MM-dd HH:mm:ss.
+        - notes values are consistently represented as either JSON or \N, with JSON structures following the defined schema (mno, subId, msisdnChangeSide, correlationId, otherMSISDN).
+    - Uniqueness:
+        
+        Only the id field is unique, while other columns are expected to contain repeated values.
+        
+    - Timeliness:
+        
+        min_time: 2017-11-23
+        max_time: 2026-03-14
+        
+- Telus (total rows: 202192737)
+    - Accuracy:
+        
+        All fields have 100% accuracy
+        
+    - Completness:
+        
+        All columns have 100% completeness (no missing values).
+        
+    - Consistency:
+        - id values are consistently numeric.
+        - change_key values follow a consistent 64-character hexadecimal format.
+        - change_type values are consistently represented within a standardized set:
+        MSISDN_CHANGE, DEVICE_CHANGE, SIM_CHANGE, STATUS_CHANGE-S, STATUS_CHANGE-C, MSISDN_CHANGE_FROM, STATUS_CHANGE-AA, STATUS_CHANGE-A.
+        - timestamp values follow a consistent format yyyy-MM-dd HH:mm:ss.
+        - notes values are consistently represented as either JSON or \N, with JSON structures following the defined schema (mno, subId, msisdnChangeSide, correlationId, otherMSISDN).
+    - Uniqueness:
+        
+        Only the id field is unique, while other columns are expected to contain repeated values.
+        
+    - Timeliness:
+        
+        min_time: 2017-11-26
+        max_time: 2026-03-14
+        
+- Transformation from Bronze to Silver:
+    - The id field was converted from STRING to INTEGER to ensure proper data typing.
+    - The timestamp field was converted from STRING to TIMESTAMP for accurate time-based operations.
+    - The notes field, originally stored as a JSON string, was parsed and flattened into structured columns: mno, subId, msisdnChangeSide, correlationId, and otherMSISDN.
+    - The mno column is derived using specific business logic: if the notes contain an explicit mno value, it is used as the ground truth; if the notes contain subId, the record is classified as BELL; otherwise, it is classified as ROGERS.
+    - The dataset schema was standardized to improve data quality, usability, and query performance.
+
+---
+
+### 2.5 audit_trail_response_2
+
+| Attribute | Value |
+| --- | --- |
+| **S3 Location** | `s3://enstream-lake-bronze-dev/landing/audit_trail_response_2.csv` |
+| **Format** | Parquet |
+| **Description** | Raw audit trail data |
+| **Owner** | Data Engineering |
+| **PII** | Yes (id, request_id, hashed_msisdn, partner_id, service_provider_id) |
+| **Primary Key** | id |
+| **Foreign Key** | `hashed_msisdn` |
+| **Jupyter Notebook** | `shared/SherryShi/audit_trail_response_2_cleaning.ipynb` |
+
+**Schema:**
+
+| Column | Type | Description | Example |
+| --- | --- | --- | --- |
+| `id` | STRING | Unique record identifier | `2` |
+| `request_id` | STRING | Request identifier for the API call | `OTP5868f006849403-a24b-9c3e-efc67bcefc3` |
+| `operation` | STRING | Type of operation performed | `V2_ACCOUNT_CHANGE_AGE` |
+| `hashed_msisdn` | STRING | Hashed MSISDN identifier | `400083fee4205d70ee9aaa91520bef5573eec7324ee1a7c04035be08b07df8b3` |
+| `partner_id` | STRING | Partner identifier | `5293624665` |
+| `service_provider_id` | STRING | Service provider identifier | `3781814539` |
+| `mno` | STRING | Mobile network operator | `BELL` |
+| `brand` | STRING | Brand name | `LUCKY` |
+| `timestamp` | STRING | Event timestamp | `2025-08-07 03:02:15` |
+| `data` | STRING | JSON payload containing response and detailed attributes | `{responseCode:0,recentServiceChangeAge:{deviceChangeAge:5,simChangeAge:5}}` |
+
+**Access (Python):**
+
+```python
+s3_path = "s3://enstream-lake-bronze-dev/landing/audit_trail_response_2.csv"
+df = spark.read.option("header", True).csv(s3_path)
+```
+
+Data Quality Notes: Total 118062826 rows
+
+- Accuracy:
+    
+    All fields have 100% accuracy
+    
+- Completness:
+    
+    All columns have full completeness except for mno (~0.40% null) and brand (~3.39% null), which contain a small proportion of missing values.
+    
+- Consistency:
+    - id values are consistently numeric with no nulls or invalid formats.
+    - request_id values contain no nulls and are primarily UUID-like identifiers (including some with OTP prefixes), indicating generally consistent structure. A smaller subset corresponds to known system or batch-generated patterns, while a limited portion deviates from the expected format.
+    - operation values show no data quality issues (no nulls, no invalid formats). The column includes the following operation types: V2_ACCOUNT_CHANGE_AGE, V1_DATA_MATCHING, V1_DETAILED_IDENTITY_VERIFICATION, V2_TRUST_SCORE, V1_APPLICATION_PROTECT, V1_MSISDN_VERIFICATION, V1_INSURANCE_PREMIUM_VALIDATOR, V1_GET_MOBILE_TOKEN, V1_ACCOUNT_TYPE, V1_TOKENIZED_MSISDN, V1_TRUST_SCORE, V1_ACTIVATION_DATE, V1_ACCOUNT_STATUS, V1_CHECK_USER_INTEGRITY, V1_CHECK_RECYCLED, V1_DEVICE_INFORMATION, V2_MSISDN_RETRIEVAL, V1_PAY_VERIFY, V1_RECENT_SERVICE_CHNAGE_ENHANCED, V1_CUSTOM_SERVICE, V1_MSISDN_RETRIEVAL, V1_ACCOUNT_CHANGE_AGE, V1_AGE_VERIFICATION.
+    V2_ACCOUNT_CHANGE_AGE accounts for approximately 88.6% of all records.
+    - hashed_msisdn values follow a consistent 64-character lowercase hexadecimal format, with no nulls, no placeholder values (e.g., \N), and no invalid formats detected (0% null rate).
+    - partner_id values contain no nulls. The majority follow the expected alphanumeric format, while a small portion (~1.73%) are non-compliant, primarily consisting of test accounts (e.g., ens_batch_test) and special system-generated identifiers rather than true production partner IDs.
+    - service_provider_id values contain no nulls. A small portion (~0.57%) do not conform to the expected alphanumeric format, primarily due to system or batch-related identifiers (e.g., djd_batch_sp), rather than standard production service provider IDs.
+    - mno values include the following categories: ROGERS, BELL, TELUS, LINETYPE, BELL_LANDLINE, EV_LINETYPE, and \N. The majority of records are concentrated in the three main carriers, with ROGERS (~35.5%), BELL (~30.2%), and TELUS (~27.7%), while the remaining values account for a relatively small proportion.
+    - brand values include a wide range of categories (numerous carriers and service providers). The majority of records are concentrated in the main brands ROGERS (~24.3%), BELL (~20.9%), and TELUS (~18.5%), which together account for approximately 63.7% of the total dataset, while the remaining values are distributed across many smaller brands.
+    - timestamp values follow a consistent format yyyy-MM-dd HH:mm:ss.
+    - data values show no data quality issues (no nulls, no invalid formats) and consistently follow a valid JSON structure (enclosed in {}).
+- Uniqueness:
+    
+    Only the id field is unique, while other columns show varying levels of distinctness, including request_id (~100%), hashed_msisdn (~13.75%), timestamp (~14.80%), data (~4.61%), and low-cardinality fields such as operation (23 values), partner_id (52), service_provider_id (205), mno (7), and brand (182).
+    
+- Timeliness:
+    
+    min_time: 2025-08-07
+    max_time: 2026-03-15
+    
+- Transformation from Bronze to Silver:
+    - The timestamp column has been converted from STRING to TIMESTAMP format for improved consistency and usability.
+    - The operation column has been used to partition the data, with each operation stored in separate locations for better organization and access.
+    - The data column has been parsed and structured, with contents separated into operation-specific datasets. Please refer to each operation-specific dataset for detailed schema and fields.
+
+---
+
+### 2.6 audit_trail_services_3
+
+| Attribute | Value |
+| --- | --- |
+| **S3 Location** | `s3://enstream-lake-bronze-dev/landing/audit_trail_services_3.csv.gz` |
+| **Format** | Parquet |
+| **Description** | Audit trail service data |
+| **Owner** | Data Engineering |
+| **PII** | Yes (id, msisdn, hashed_msisdn, request_id, source_ip) |
+| **Primary Key** | request_id, hashed_msisdn, partner_id, service_provider_id, mno, brand, timestamp |
+| **Foreign Key** | hashed_msisdn |
+| **Jupyter Notebook** | `shared/SherryShi/audit_trail_services_3_cleaning.ipynb` |
+
+**Schema:**
+
+| Column | Type | Description | Example |
+| --- | --- | --- | --- |
+| `id` | STRING | Unique record identifier | `2` |
+| `operation` | STRING | Type of operation performed | `V1_DATA_MATCHING` |
+| `mno` | STRING | Mobile network operator | `ROGERS` |
+| `msisdn` | STRING | Raw MSISDN (if available) | `NULL` |
+| `hashed_msisdn` | STRING | Hashed MSISDN identifier | `3f1cf8630b021ba544ca232961c1306d3723cf3e1eed1ae8bd490c92eabdc583` |
+| `encrypted_msisdn` | STRING | Encrypted MSISDN value | `GDM1S3I4nyNC32xIEwEPog==` |
+| `partner_id` | STRING | Partner identifier | `enstream` |
+| `service_provider_id` | STRING | Service provider identifier | `testServiceProvider` |
+| `request_id` | STRING | Request identifier | `RogersAlert1-ansible-03-23-05-18.02.24.03` |
+| `response_code` | STRING | Response status or code | `SUCCESS` |
+| `source_ip` | STRING | Source IP address of the request | `192.168.1.64` |
+| `timestamp` | STRING | Event timestamp | `2023-05-18 02:24:43` |
+| `date` | STRING | Event date | `2023-05-18` |
+| `timestamp_ms` | STRING | Timestamp in milliseconds since epoch | `1684391083145` |
+| `processing_time` | STRING | Processing time in milliseconds | `12457` |
+| `brand` | STRING | Brand name | `FIDO` |
+
+**Access (Python):**
+
+```python
+s3_path = "s3://enstream-lake-bronze-dev/landing/audit_trail_services_3.csv.gz"
+df = spark.read.option("header", True).csv(s3_path)
+df = spark.read.parquet("s3://enstream-lake-silver-dev/temp_raw/audit_trail_services_3/")  #  faster way
+```
+
+**Data Quality Notes: Total** 915770518 rows
+
+- Accuracy:
+    
+    All fields have 100% accuracy
+    
+- Completness:
+    
+    Most columns are fully populated. Missing values are concentrated in msisdn (100%), encrypted_msisdn (~59.0%), brand (~21.7%), and mno (~18.5%), with minor null rates in source_ip (~0.44%), response_code (~0.14%), hashed_msisdn (~0.13%), and service_provider_id (~0.01%).
+    
+- Consistency:
+    - id values are consistently numeric with no nulls or invalid formats.
+    - Operation values show no data quality issues (no nulls, no invalid formats). The column includes multiple operation types, with V2_ACCOUNT_CHANGE_AGE overwhelmingly dominant, accounting for ~81.0% of all 915,770,518 records, followed by V1_DATA_MATCHING (~5.5%), V1_DETAILED_IDENTITY_VERIFICATION (~2.0%), and other operations each contributing less than 2%.
+    - mno values include the following categories: ROGERS, BELL, TELUS, LINETYPE, BELL_LANDLINE, EV_LINETYPE, and \N. The majority of records are concentrated in the three main carriers, with ROGERS (~28.8%), BELL (~26.0%), and TELUS (~23.2%), while \N (~18.5%) represents missing values and the remaining categories account for a relatively small proportion.
+    - The msisdn column is entirely missing—100% of values are “\N”, with no valid entries.
+    - The hashed_msisdn values are 64-character hexadecimal strings (likely SHA-256 hashes), representing anonymized phone numbers.
+    - The encrypted_msisdn values follow a Base64-encoded format, but ~59.0% are missing (represented as “\N”), indicating partial population of this field.
+    - The partner_id column contains no missing values. Most values follow the expected numeric ID format (digits only), while ~2.14% are non-compliant, mainly consisting of test or system-generated identifiers (e.g., *enstream*, *djd_batch*) rather than valid production IDs.
+    - The service_provider_id column has negligible missing values (~0.005%). Most values follow the expected alphanumeric format, but ~1.9% are non-compliant, mainly due to test or placeholder values
+    - The request_id column contains a variety of structured identifiers, including alphanumeric strings with common delimiters (e.g., _, -, :, ., #) and system-generated patterns (such as FLEX, RogersAlert, UUID-like, and timestamp-based IDs). After grouping and filtering out these common formats, the remaining values are minimal and represent edge-case or irregular request_id patterns.
+    - response_code values are dominated by FOUND (~74.1%), followed by NOT_FOUND (~15.8%) and SUCCESS (~9.6%), with all other codes contributing less than 1% each, indicating that most requests result in successful matches.
+    - The source_ip column is mostly valid IPv4 format, with 4,028,302 (~0.44%) missing (“\N”) and 52 invalid values, all of which are represented by the placeholder “#”.
+    - timestamp values follow a consistent format yyyy-MM-dd HH:mm:ss.
+    - The date column is fully complete and all values follow the expected yyyy-MM-dd format, with no missing or invalid entries.
+    - The timestamp_ms column is fully complete and all values are valid numeric timestamps (milliseconds), with no missing or invalid entries.
+    - The processing_time column is fully complete and all values are valid numeric durations, with no missing or invalid entries.
+    - The brand column includes many categories, with \N (~21.7%) indicating missing values. The majority of records are concentrated in major carriers such as ROGERS (~17.4%), BELL (~17.0%), and TELUS (~15.2%), followed by sub-brands like FIDO, VIRGIN_MOBILE, and KOODO, while the remaining brands each account for a very small proportion.
+- Uniqueness:
+    
+    None of the fields are unique. Highest distinctness: id (~50%), request_id (~50%), timestamp_ms (~49%). Medium: timestamp (~8.6%), hashed_msisdn (~3.3%), encrypted_msisdn (~2.4%). Low-cardinality: operation (42), partner_id (72), service_provider_id (367), mno (7), response_code (20), brand (190); msisdn is nearly constant (1).
+    
+- Timeliness:
+    
+    min_time: 2023-05-18
+    max_time: 2026-03-15
+    
+- Transformation from Bronze to Silver:
+    - Converted timestamp, date, and timestamp_ms from STRING to proper TIMESTAMP/DATE types
+    - Renamed and cast processing_time to processing_time_ms (LONG) for clarity and consistency
+    - Added new column api_type to represent API category
+    - Data is split based on operation
+
+---
+
+### 2.7 audit_trail
+
+**Schema:**
+
+| Attribute | Value |
+| --- | --- |
+| **S3 Location** | `s3://enstream-lake-bronze-dev/landing/audit_trail.csv` |
+| **Format** | Parquet |
+| **Description** | Audit trail data |
+| **Owner** | Data Engineering |
+| **PII** | Yes (id, request_id) |
+| **Primary Key** | id |
+| **Foreign Key** | partner_id, timestamp, operation |
+| **Jupyter Notebook** | `shared/SherryShi/audit_trail_cleaning.ipynb` |
+
+**Schema:**
+
+| Column | Type | Description | Example |
+| --- | --- | --- | --- |
+| `id` | STRING | Unique record identifier | `2` |
+| `request_id` | STRING | Request identifier | `NULL` |
+| `operation` | STRING | Type of operation performed | `V1_DATA_MATCHING` |
+| `category` | STRING | Result category or score indicator | `-100` |
+| `partner_id` | STRING | Partner identifier | `enstream` |
+| `service_provider_id` | STRING | Service provider identifier | `testServiceProvider` |
+| `mno` | STRING | Mobile network operator | `ROGERS` |
+| `brand` | STRING | Brand name | `FIDO` |
+| `timestamp` | STRING | Event timestamp | `2024-11-07 02:12:03` |
+| `data` | STRING | JSON payload containing detailed response attributes | `{city:[2],province:[-1],postalCode:[-1]}` |
+
+**Access (Python):**
+
+```python
+s3_path = "s3://enstream-lake-bronze-dev/landing/audit_trail.csv"
+df = spark.read.option("header", True).csv(s3_path)
+```
+
+Data Quality Notes: Total 208162844 rows
+
+- Accuracy:
+    - All fields have 100% accuracy
+    - The column is dominated by category 0 (~88.3%), followed by -100 (~7.3%) and 1 (~4.5%), indicating a strong concentration in a single primary category.
+- Completness:
+    
+    Most columns have full completeness, while the following fields contain missing values: request_id (~18.2%), brand (~4.75%), and mno (~0.15%), with all other columns showing no null values.
+    
+- Consistency:
+    - id values are consistently numeric with no nulls or invalid formats.
+    - request_id values contain no nulls and are primarily UUID-like identifiers, including variants with prefixes such as OTP or structured system-generated formats (e.g., FLEX_PROD). Overall, the values follow consistent patterns, with most entries representing standardized or system-generated identifiers and only a minimal portion exhibiting irregular formats.
+    - operation values show no data quality issues (no nulls, no invalid formats). The column includes a small set of standardized operation types, primarily: V2_ACCOUNT_CHANGE_AGE, V1_DATA_MATCHING, V1_DETAILED_IDENTITY_VERIFICATION, V2_TRUST_SCORE, and V1_APPLICATION_PROTECT.
+    V2_ACCOUNT_CHANGE_AGE accounts for approximately 89.0% of all records, indicating it is the dominant operation type.
+    - category values show no data quality issues (no nulls, no invalid formats) and consistently follow the expected numeric format, including negative values.
+    - partner_id values contain no nulls and are largely consistent, typically following an alphanumeric format (letters and numbers).
+    - service_provider_id values contain no nulls and are largely consistent, typically following an alphanumeric format (letters and numbers).
+    - mno values include the following categories: ROGERS, BELL, TELUS, LINETYPE, BELL_LANDLINE, EV_LINETYPE, and \N. The majority of records are concentrated in the three main carriers, with ROGERS (~35.5%), BELL (~30.2%), and TELUS (~28.0%), while the remaining values account for a relatively small proportion.
+    - brand values include a wide range of categories, with the majority of records concentrated in the main carriers and their sub-brands, including ROGERS, BELL, TELUS, FIDO, KOODO, and VIRGIN_MOBILE. The top three brands—ROGERS (~23.8%), BELL (~21.3%), and TELUS (~19.0%)—account for a significant portion of the data, while the remaining brands each contribute relatively small proportions.
+    - timestamp values follow a consistent format yyyy-MM-dd HH:mm:ss.
+    - data values show no data quality issues (no nulls, no invalid formats) and consistently follow a valid JSON structure (enclosed in {}).
+- Uniqueness:
+    
+    Only the id field is fully unique, while other columns show varying levels of distinctness. request_id has a high uniqueness (~81.8%), whereas timestamp (~18.1%) and data (~0.06%) are less distinct. The remaining fields are low-cardinality, including operation (5 values), category (3), partner_id (54), service_provider_id (223), mno (7), and brand (167).
+    
+- Timeliness:
+    
+    min_time: 2024-11-07
+    max_time: 2026-03-15
+    
+- Transformation from Bronze to Silver:
+    - Converted timestamp from STRING to TIMESTAMP format.
+    - Added api_type, derived from operation.
+    - Data is partitioned by operation and stored in separate tables for each operation.
+    - The data column is processed separately based on different operation types.
+
+---
+
+### 2.8 device_lookup_batch
+
+| Attribute | Value |
+| --- | --- |
+| **S3 Location** | `s3://enstream-lake-bronze-dev/landing/device_lookup_batch.csv.gz` |
+| **Format** | Parquet |
+| **Description** | Device look up data |
+| **Owner** | Data Engineering |
+| **PII** | Yes (id, change_key, change_key_ats, imei, imsi) |
+| **Primary Key** | id |
+| **Foreign Key** | change_key_ats |
+| **Jupyter Notebook** | `shared/SherryShi/device_lookup_batch_cleaning.ipynb` |
+
+**Schema:**
+
+| Column | Type | Description | Example |
+| --- | --- | --- | --- |
+| `id` | STRING | Unique record identifier | `2` |
+| `change_key` | STRING | Hashed identifier for the change event | `948c55eaffc2f16b7cb8f12b7ddca8be87f975af84b9df1ab3e93e54c26396b0` |
+| `change_key_ats` | STRING | Associated alternate change key | `NULL` |
+| `mno` | STRING | Mobile network operator | `TELUS` |
+| `imei` | STRING | Hashed IMEI identifier | `11622f155d0523c51559a2b20eb476f24f84792b054af9472d23fbfafc171823` |
+| `imsi` | STRING | Hashed IMSI identifier | `aa3cea068d78359ee0645e1529969a3a4053e510b8c66e31175313440ea42bb6` |
+| `date` | STRING | Event date | `2023-07-06` |
+| `timestamp` | STRING | Event timestamp | `2023-07-06 03:18:41` |
+| `notes` | STRING | Additional metadata in JSON format | `{tac:35169051}` |
+| `related_id` | STRING | Related record identifier | `2` |
+| `status` | STRING | Status of the event | `IMEI_START` |
+
+**Access (Python):**
+
+```python
+s3_path = "s3://enstream-lake-bronze-dev/landing/device_lookup_batch.csv.gz"
+df = spark.read.option("header", True).csv(s3_path)
+df = spark.read.parquet("s3://enstream-lake-silver-dev/temp_raw/device_lookup_batch/") # faster way
+```
+
+Data Quality Notes:
+
+- Data organized by different operations, with varying structures per operation. (taking care of missing values)
+- Bell (total rows: 76497426)
+    - Accuracy:
+        
+        All fields have 100% accuracy
+        
+    - Completness:
+        
+        id, change_key, mno, date, timestamp, related_id, and status have 100% completeness. change_key_ats has a null rate of 3.74%, notes 17.61%, imei 22.83%, and imsi 88.42%.
+        
+    - Consistency:
+        - id values are consistently numeric
+        - All change_key values are consistently represented as 64-character hexadecimal strings, with no format inconsistencies detected.
+        - change_key_ats has no null values, with ~3.74% recorded as \N, and all remaining values follow the 64-character hexadecimal format with no invalid records detected.
+        - All mno values are consistently represented as BELL.
+        - The imei field has a null rate of approximately 22.83%, with only 1 record containing a non-hashed format, while all remaining non-null values conform to the expected 64-character hexadecimal format.
+        - imsi has a high null rate (~88.42%), with no \N values. Among the non-null records, 7,544 values do not follow the expected 64-character hexadecimal format. The non-standard imsi values are 24-character numeric strings formed by repeating a 12-digit segment twice (e.g., 00014160009999 → 000141600099994160009999), and are consistently associated with IMSI_END events.
+        - All date values follow the format yyyy-MM-dd.
+        - All timestamp values follow the format yyyy-MM-dd HH:mm:ss.
+        - The notes field is parsed into structured columns, including tac, oldIMSI, oldIMEI, and fromADCSnapshot. notes has a null rate of ~17.61%, with no \N values and no invalid JSON formats detected; all non-null values follow the expected {...} structure.
+        - The related_id column consists entirely of numeric values (digits only), with no nulls, no \N, and no invalid formats.
+        - status contains a limited set of categorical values: IMEI_START, IMSI_START, IMEI_START_NC, IMSI_START_A, IMSI_END_C, IMSI_START_NC.
+    - Uniqueness:
+    The id and related_id fields have a distinct ratio of 100%, indicating full uniqueness.
+    Fields with duplicate values include change_key (16.31%), change_key_ats (15.28%), imei (32.00%), imsi (9.92%), timestamp (31.61%), notes (25.15%), and status (~0.00%).
+    The timestamp field is inherently non-unique, and date has low cardinality with 984 distinct values.
+    - Timeliness:
+        
+        min_time: 2023-07-06
+        max_time: 2026-03-15
+        
+- Rogers (total rows: 117539053)
+    - Accuracy:
+        
+        All fields have 100% accuracy
+        
+    - Completness:
+        
+        id, change_key, mno, imei, imsi, date, timestamp, notes, related_id, and status have 100% completeness, while change_key_ats has a null rate of ~4.16%.
+        
+    - Consistency:
+        - id values are consistently numeric
+        - All change_key values are consistently represented as 64-character hexadecimal strings, with no format inconsistencies detected.
+        - change_key_ats has no null values, with ~4.16% recorded as \N, and all remaining values follow the 64-character hexadecimal format with no invalid records detected.
+        - All mno values are consistently represented as ROGERS.
+        - The imei field contains three patterns: valid 64-character hexadecimal values (~92.97%), MISSING_DATA (8,257,680 records, ~7.02%), and 26-character zero-padded numeric strings (56 records), which are exclusively associated with IMEI_START events.
+        - imsi has no null or \N values. Among all records, 8,257,680 values do not follow the expected 64-character hexadecimal format and are represented as MISSING_DATA.
+        - All date values follow the format yyyy-MM-dd.
+        - All timestamp values follow the format yyyy-MM-dd HH:mm:ss.
+        - The notes field is parsed into structured columns, including tac, oldIMSI, oldIMEI, and fromADCSnapshot. It has no \N values and no invalid JSON formats; all values follow the expected {...} structure.
+        - The related_id column consists entirely of numeric values (digits only), with no nulls, no \N, and no invalid formats.
+        - status contains a limited set of categorical values: IMEI_START, IMEI_END, IMSI_START, IMSI_END.
+    - Uniqueness:
+    id and related_id are fully distinct (100%), while status has only 4 distinct values; other fields with lower distinctness include change_key (13.06%), change_key_ats (12.31%), imei (24.67%), imsi (19.66%), timestamp (27.13%), and notes (23.50%).
+    - Timeliness:
+        
+        min_time: 2017-11-23
+        max_time: 2026-03-15
+        
+- Telus (total rows: 218311398)
+    - Accuracy:
+        
+        All fields have 100% accuracy
+        
+    - Completness:
+        
+        id, change_key, mno, imsi, date, timestamp, related_id, and status have 100% completeness, while change_key_ats (~6.06%), imei (~7.02%), and notes (~7.02%) contain null values.
+        
+    - Consistency:
+        - id values are consistently numeric
+        - All change_key values are consistently represented as 64-character hexadecimal strings, with no format inconsistencies detected.
+        - change_key_ats has no null values, with ~6.06% recorded as \N, and all remaining values follow the 64-character hexadecimal format with no invalid records detected.
+        - All mno values are consistently represented as ROGERS.
+        - The imei field has a null rate of ~7.02%, and all remaining non-null values follow the expected 64-character hexadecimal format, with no invalid records detected.
+        - The imsi field has no null or \N values, and all records follow the expected 64-character hexadecimal format with no invalid values detected.
+        - All date values follow the format yyyy-MM-dd.
+        - All timestamp values follow the format yyyy-MM-dd HH:mm:ss.
+        - The notes field has a null rate of ~7.02%, and all remaining non-null values follow the expected JSON {...} format with no invalid records detected.
+        - The related_id column consists entirely of numeric values (digits only), with no nulls, no \N, and no invalid formats.
+        - status contains a limited set of categorical values: IMEI_START, IMSI_START, IMEI_START_NC, IMSI_START_A, IMSI_END_C, IMSI_START_NC.
+    - Uniqueness:
+        
+        id and related_id are fully distinct (100%), while status has only 6 distinct values; other fields with lower distinctness include change_key (6.84%), change_key_ats (6.67%), imei (11.25%), imsi (9.53%), timestamp (29.38%), and notes (0.16%).
+        
+    - Timeliness:
+        
+        min_time: 2023-07-06
+        max_time: 2026-03-15
+        
+- Transformation from Bronze to Silver:
+    - Standardized the schema by converting date from STRING to DATE and timestamp from STRING to TIMESTAMP.
+    - Parsed the notes JSON field and extracted it into structured columns: tac, oldIMSI, oldIMEI, and fromADCSnapshot.
+    - Removed the original notes column after parsing, as its contents were normalized into separate fields.
+    - Preserved the remaining columns with consistent naming and structure for downstream processing and analysis.
+
+---
+
+### 2.9 linetype_response
+
+| Attribute | Value |
+| --- | --- |
+| **S3 Location** | `s3://enstream-lake-bronze-dev/landing/linetype_response.csv` |
+| **Format** | Parquet |
+| **Description** | Linetype response data |
+| **Owner** | Data Engineering |
+| **PII** | Yes (id, request_id, hashed_msisdn) |
+| **Primary Key** | id |
+| **Foreign Key** | hashed_msisdn |
+| **Jupyter Notebook** | `shared/SherryShi/linetype_response_cleaning.ipynb` |
+
+**Schema:**
+
+| Column | Type | Description | Example |
+| --- | --- | --- | --- |
+| `id` | STRING | Unique record identifier | `2` |
+| `request_id` | STRING | Request identifier | `afa8ff83-205a-4273-a507-b3eecf9c3b1a` |
+| `partner_id` | STRING | Partner identifier | `5293624665` |
+| `service_provider_id` | STRING | Service provider identifier | `3781814539` |
+| `operation` | STRING | Type of operation performed | `V2_ACCOUNT_CHANGE_AGE` |
+| `hashed_msisdn` | STRING | Hashed MSISDN identifier | `6ec7ec89aeae523008b9db3ae40436cfec215c2b8747c5226501383f45b9d0fc` |
+| `mobile_country_code` | STRING | Mobile country code (MCC) | `302` |
+| `mobile_network_code` | STRING | Mobile network code (MNC) | `490` |
+| `organization` | STRING | Carrier or organization name | `Freedom Mobile Inc.` |
+| `type` | STRING | Network type | `mobile` |
+| `timestamp` | STRING | Event timestamp | `2025-08-07 03:02:48` |
+
+**Access (Python):**
+
+```python
+s3_path = "s3://enstream-lake-bronze-dev/landing/linetype_response.csv"
+df = spark.read.option("header", True).csv(s3_path)
+```
+
+Data Quality Notes: Total 12954186 rows
+
+- Accuracy:
+    
+    All fields have 100% accuracy
+    
+- Completness:
+    
+    Most columns have full completeness, while the following fields contain missing values: request_id and operation (~43.1%), mobile_network_code (~7.5%), and small proportions in mobile_country_code, organization, and type (~0.3%). All other columns show no null values.
+    
+- Consistency:
+    - id values are consistently numeric with no nulls or invalid formats.
+    - request_id values contain no nulls and generally follow a consistent alphanumeric pattern. Most values are UUID-like (including some with OTP prefixes), along with structured batch-generated formats such as ens_batch_test.
+    - partner_id values contain no nulls and no invalid formats, and consistently follow the expected alphanumeric pattern, indicating fully standardized and high-quality data.
+    service_provider_id values contain no nulls and no invalid formats, and consistently follow the expected alphanumeric pattern, indicating fully standardized and high-quality data.
+    - operation values show no format issues, with a limited set of standardized types including V2_ACCOUNT_CHANGE_AGE, V1_DETAILED_IDENTITY_VERIFICATION, V1_TRUST_SCORE, V1_CHECK_RECYCLED, and V1_APPLICATION_PROTECT. A significant portion (~43.1%) is represented as \N, indicating missing values.
+    V2_ACCOUNT_CHANGE_AGE accounts for approximately ~52.5% of all records, making it the dominant operation type.
+    - hashed_msisdn values contain no nulls and no invalid formats, and consistently follow the expected 64-character hexadecimal pattern, indicating fully standardized and high-quality data.
+    - mobile_country_code values follow a numeric pattern (digits only), with a small portion (~0.34%) represented as \N indicating missing data.
+    - mobile_network_code values follow a numeric pattern (digits only), with a noticeable portion (~7.52%) represented as \N indicating missing data.
+    - organization values are mostly valid free-text strings (e.g., carrier or provider names such as “Bell Mobility”), with no format issues, and only a small portion (~0.34%) missing (null or \N).
+    - type values follow an alphabetic pattern (letters only), with a small portion (~0.34%) represented as \N indicating missing data.
+    - timestamp values follow a consistent format yyyy-MM-dd HH:mm:ss.
+- Uniqueness:
+    
+    Only the id field is fully unique, while other columns show varying levels of distinctness. request_id (~56.9%), timestamp (~50.5%), and hashed_msisdn (~44.9%) exhibit moderate uniqueness, whereas the remaining fields are low-cardinality, including operation (6 values), partner_id (12), service_provider_id (13), mobile_country_code (7), mobile_network_code (46), organization (175), and type (7).
+    
+- Timeliness:
+    
+    min_time: 2025-08-07
+    max_time: 2026-03-14
+    
+- Transformation from Bronze to Silver:
+    - Converted timestamp from STRING to TIMESTAMP format.
+    - Added api_type, derived from operation.
+    - Data is partitioned by operation and stored in separate tables for each operation.

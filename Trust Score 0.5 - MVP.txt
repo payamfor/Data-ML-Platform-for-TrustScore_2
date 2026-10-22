@@ -1,0 +1,1396 @@
+Trust Score 0.5 MVP ML Scope
+1. Objective
+Trust Score 0.5 will productionize EnStream’s unsupervised anomaly detection capability into a deployment-ready trust scoring framework that supports batch and real-time trust decisioning across the customer lifecycle. The system will produce a Trust Score (0–100), Low / Medium / High suspicion tiers, reason codes, and where applicable, flags indicating potential fraud type(s), using telco identity, behavioural, contextual, and relational signals. It must be dynamic, and explainable. The framework will support two operating modes:
+•	a batch model framework for fraud operations and other offline customer problems, where feature subsetting is permitted to solve different customer-specific use cases related to fraud operations or adjudication prioritization
+•	a real-time API model framework for onboarding and transaction monitoring, where a single standardized model is used respectively and feature subsetting is not supported
+This approach allows EnStream to support customer-specific batch problem solving in earlier phases while converging to a more standardized and operationally simpler real-time model for API deployment.
+2. Problem Framing
+TS0.5 remains an anomaly detection problem, but the production scope must now explicitly account for two realities:
+1.	Significant feature distribution drift exists across time, carrier conditions, partner populations, and operational contexts.
+2.	Different use cases (onboarding, transaction monitoring, fraud operations) require different feature subsets, different baselines of “normal,” different thresholds, and different trade-offs between recall, friction, and false positives.
+This means TS0.5 MVP should not assume one shared training distribution, one canonical feature vector, or one universal threshold policy. Instead, it must treat each use case as its own modeled environment with its own approved feature subset, preprocessing, calibration, and monitoring strategy given that labels and patterns vary, and that baseline behaviour shifts over time.
+3.	Different deployment modes require different levels of model flexibility
+For batch workloads, customer problems may differ materially, so Phases 1–2 will allow feature subsetting and use-case-specific model configurations to support different customer problems, baselines of normal behaviour, thresholds, and performance trade-offs.
+For real-time API workloads, operational simplicity, consistency, latency, and maintainability are more important. Therefore, Phases 3–4 will use the same standardized model and will not support feature subsetting. In these phases, onboarding and transaction monitoring will rely on a common feature set, common preprocessing, and common model structure, with calibration and thresholding applied on top of that shared model as needed.
+This means TS0.5 will not follow one single modeling strategy across all phases. Instead:
+o	Batch phases optimize for flexibility and customer-specific problem solving
+o	Real-time phases optimize for standardization, reuse, and operational scalability under API constraints
+3. In Scope
+3.1 In-Scope Phases
+3.1.1 Phase 1 (Batch)
+Phase 1 will move PoC tabular unsupervised models using Isolation Forest and KMeans to a production-ready batch-based MVP to generate a calibrated Trust Score, suspicion tiers, reason codes, and potential fraud-type flags for fraud operations and similar offline customer problems.
+Because this phase is intended to solve different customer batch problems, feature subsetting is permitted. Separate feature subsets may be defined for different customer problems or batch use cases, with corresponding preprocessing, calibration, and threshold strategies.
+In Scope:
+•	productionize Isolation Forest and KMeans
+•	define different feature subsets for different batch customer problems / use cases
+•	establish use-case-specific preprocessing, score calibration, and suspicion tiers
+•	generate Trust Score (0–100), Low / Medium / High tiers, reason codes, and flags indicating potential fraud type(s)
+•	complete offline validation, threshold tuning, and deployment-ready model packaging
+•	support at least one real customer batch workflow in controlled rollout mode
+3.1.2 Phase 2 (Batch)
+Phase 2 will industrialize Phase 1 by automating training, and scoring workflows for batch use cases. It will retain the same flexibility as Phase 1, meaning feature subsetting continues to be supported for different customer batch problems.
+The primary output is a pipeline-driven ML operating layer that can repeatedly train, validate, and package batch Trust Score models for multiple customer-specific problem configurations.
+In Scope:
+•	automate model training workflows by batch use case / customer problem
+•	automate batch scoring
+•	orchestrate training, evaluation, and scoring with pipelines
+•	automate feature-subset selection execution as defined by approved batch use-case configs
+•	automate score calibration and threshold application where appropriate
+•	automate artifact generation for model outputs and validation results
+•	standardize release promotion from development to preproduction to production
+3.1.3 Phase 3 (Real-time API)
+Phase 3 will move from the batch MVP foundation to a production-ready real-time API MVP for onboarding, transaction monitoring, and fraud operations/adjudication APIs. Unlike the batch phases, Phase 3 will use a single standardized model for each API and will not support feature subsetting.
+This phase is intended to support operationally consistent, low-latency API scoring for real-time customer decisions. The model will use one shared feature set, one standardized preprocessing flow, and one common model structure for supported API use cases. While the model itself will remain standardized, decision thresholds will be calibrated by use case and customer risk appetite to achieve the right balance between fraud risk mitigation and customer friction.
+To support this, EnStream will use batch ground truth provided by customers — including known fraud and non-fraud outcomes — to automatically tune decisioning thresholds for real-time use cases. This calibration process will allow the same real-time model to be deployed consistently while tailoring decision sensitivity to the operational objectives of each customer, such as maximizing fraud catch rate, minimizing false positives, or reducing onboarding friction.
+In Scope:
+•	productionize a single standardized real-time tabular model for onboarding and transaction monitoring, and fraud operations/adjudication
+•	define one approved real-time feature set and preprocessing flow
+•	generate Trust Score (0–100), Low / Medium / High tiers, and reason codes
+•	support threshold calibration by customer and use case based on risk appetite and friction tolerance
+•	use customer batch ground truth to automatically tune decisioning thresholds
+•	package the model for API-compatible inference
+•	complete real-time deployment validation, latency validation, and threshold tuning
+•	support at least one real customer real-time API workflow in controlled rollout mode
+Out of Scope:
+•	customer-specific feature subsetting
+•	maintaining multiple real-time feature-set variants
+3.1.4 Phase 4
+Phase 4 adds full ML lifecycle control and ongoing model health management on top of the automated foundation built in Phase 3 to continuously evaluate model health, manage dependencies and artifacts, and retrain safely under drift. The primary output is a continuously managed ML system that can detect when the model is degrading, trace exactly what changed, and safely retrain or redeploy.
+The purpose of this phase is to continuously evaluate the health of the shared real-time model, manage dependencies and artifacts, and retrain or recalibrate the model safely under drift while preserving one common model for all supported API use cases
+In Scope:
+•	establish continuous evaluation 
+o	feature drift monitoring
+o	score drift monitoring
+o	anomaly-rate monitoring
+o	reason-code distribution monitoring
+o	use-case-specific performance monitoring
+•	establish continuous retraining / recalibration 
+o	scheduled retraining
+o	trigger-based retraining under drift
+o	recalibration-only path where needed
+•	implement artifact and dependency tracking 
+o	model artifacts
+o	feature-subset configs
+o	preprocessing dependencies
+o	training metadata
+o	evaluation outputs
+•	implement CI/CD pipeline support 
+o	validation gates before promotion
+o	champion/challenger comparison
+o	rollback support
+•	define governance for model versioning, approval, and release traceability
+3.1.5 Phase 5
+Phase 5 will extend this framework with graph ML, such as a Graph Autoencoder, to improve detection of collective anomalies including fraud rings and shared infrastructure and it should repeat the same operating patterns established in phases 1 to 3. A comprehensive set of relational signals will be incorporated into tabular ML models.
+In Scope:
+•	build graph-based model inputs for customer, account, MSISDN, device, SIM, and related entities
+•	develop graph ML models such as graph autoencoder or equivalent graph anomaly models
+•	detect collective anomalies such as: 
+o	fraud rings
+o	mule networks
+o	suspicious shared infrastructure
+o	unusual neighbourhood patterns
+•	fuse graph outputs with tabular Trust Score outputs where appropriate
+•	generate graph-driven reason codes where feasible
+3.2 In Scope ML Workstreams
+3.2.1 Production-grade Tabular Anomaly Modeling Framework
+The first phase of TS0.5 MVP will productionize the current tabular unsupervised ensemble model built on
+•	Isolation Forest for detecting and scoring global anomalies and explainability
+•	KMeans clustering for detecting and scoring local anomalies
+The ML scope includes:
+•	formalizing model inputs by use case
+•	training one or more use-case-specific model variants
+•	standardize ensemble logic across ML models
+•	generating a single normalized trust score and suspicion band
+•	generating reason codes and potential fraud flags
+•	preserving extensibility for future semi-supervised ML models, and graph ML models and augmentation
+3.2.2 Use-case-specific Model Design
+Design and productionize separate model configurations for:
+•	Onboarding / light KYC
+•	Transaction monitoring
+•	Fraud ops / adjudication
+Each configuration must define:
+•	target entity and scoring context
+•	eligible feature subset
+•	training population and exclusions
+•	reason code policy
+•	retraining cadence
+•	acceptance metrics.
+•	latency requirement
+•	threshold strategy
+•	review / escalation logic
+3.2.3 Feature Selection and Model Input Governance
+This includes:
+•	define the approved model input schema
+•	specifying mandatory vs optional features subset per use case
+•	validate feature stability, leakage risk, sparsity, and carrier coverage
+•	set feature quality gates for training and scoring
+•	define fallback rules when input coverage is incomplete.
+3.2.4 Drift-aware data preprocessing and normalization
+Given significant feature distribution drift over time, preprocessing must be scoped as part of ML productionization.
+This includes:
+•	use-case-specific scaling / normalization rules
+•	rolling reference windows for stable baseline estimation
+•	treatment of seasonal and operational shifts
+•	outlier clipping / winsorization policy where appropriate
+•	handling changes in feature sparsity and missingness over time
+•	use-case-specific data quality filters before scoring
+3.2.5 Score Calibration and Suspicion Tiering
+Raw anomaly scores are not sufficient for MVP. The system must output a calibrated decision-ready score.
+ML scope includes:
+•	mapping ML model outputs to a normalized Trust Score (0–100)
+•	defining Low / Medium / High suspicion tiers
+•	calibrating decision thresholds separately by each use case and customer based on their risk appetite
+•	building score stability rules to reduce noisy oscillation
+•	defining confidence bands or score quality flags when inputs are degraded
+3.2.6 Explainability, Reason Codes and Attribute-Level Transparency
+This includes:
+•	defining model explanation logic for unsupervised ensemble outputs
+•	reason-code generation from model outputs and dominant anomaly drivers
+•	use-case-specific explanation templates
+•	internal diagnostic explanation detail
+•	customizer-facing explanation detail
+•	mapping of model drivers to customer-consumable and business-readable terms
+3.2.7 Offline Evaluation, Backtesting, and Production and Customer Deployment Testing
+This should formalize metrics used in PoC (recall@k and precision@k when labels are available partially, KS statistics when labels are unavailable, robustness to drifts, and baseline lifts) into production acceptance tests and evaluation must be structured around per-use-case validation
+Scope includes:
+•	defining offline train/validation/test methodology
+•	use-case-specific validation customer cohorts
+•	time-based (weekly or monthly) backtesting and temporal holdouts to validate drift robustness
+•	stability tests across time windows and customer populations
+•	decision threshold stress testing by use case
+•	false-positive review with customer SMEs
+•	acceptance criteria for promotion from PoC to Deployment for customers
+Minimum ML acceptance for MVP should include:
+•	consistent lift over D4 or current integrity score baseline
+•	stable score distributions over time
+•	interpretable top drivers
+•	acceptable latency at inference handoff
+•	robust behaviour under missing or delayed inputs
+3.2.8 Model packaging, deployment readiness, and runtime scoring logic
+This includes:
+•	training pipeline that is reproducible and parameterized
+•	inference pipeline for batch and API-compatible scoring
+•	model versioning and release management
+•	artifact packaging and rollback support
+•	deterministic preprocessing required at scoring time
+•	score normalization consistency across releases
+•	documentation of model inputs, outputs, thresholds, and reason codes
+3.2.9 Monitoring and drift detection framework
+This includes:
+•	feature distribution drift metrics by use case
+•	population stability monitoring by scoring cohort
+•	score distribution monitoring
+•	anomaly rate monitoring
+•	reason-code distribution monitoring
+•	detection of missing / delayed input features
+•	post-launch performance review loops with fraud op
+•	alert thresholds for retraining, recalibration, or rollback
+3.2.10 Retraining and Recalibration Framework
+TS0.5 MVP must include a defined operating model for updating models under drift.
+This includes:
+•	retraining triggers based on feature drift or score drift
+•	recalibration-only path when score bands shift but model structure remains valid
+•	full retraining path when feature relationships materially change
+•	use-case-specific retraining frequency
+•	shadow validation before promotion
+•	champion-challenger comparisons before release
+3.2.11 Responsible and controlled rollout
+TS0.5 MVPis unsupervised and designed as a risk signal rather than a final verdict, the scope should explicitly support human-in-the-loop rollout
+This includes:
+•	rollout mode definition: 
+o	shadow
+o	advisory
+o	controlled decision support
+•	analyst review workflow support
+•	score confidence flags
+•	rollback and safe-disable logic for bad model behaviours
+4. Deliverables
+4.1.1 Phase 1 (Batch) — Production MVP
+Phase 1 focuses on turning the PoC batch tabular models into a production-ready MVP for fraud operations and similar offline customer problems, while allowing feature subsetting for different batch customer problems.
+Deliverables
+•	Phase 1 solution design document 
+o	batch MVP scope
+o	supported customer problem types
+o	operating assumptions, dependencies, and rollout approach
+•	Approved batch model pack(s) 
+o	productionized Isolation Forest and KMeans models
+o	ensemble scoring logic where applicable
+o	versioned model artifacts
+•	Use-case feature subset configurations 
+o	approved feature subset per batch customer problem / use case
+o	mandatory vs optional features
+o	fallback logic for incomplete feature coverage
+•	Batch preprocessing package 
+o	use-case-specific preprocessing and normalization rules
+o	feature quality checks
+o	drift-aware data handling rules
+•	Scoring output specification 
+o	Trust Score (0–100)
+o	Low / Medium / High suspicion tiers
+o	reason codes
+o	potential fraud-type flags
+•	Calibration and threshold package 
+o	use-case-specific score calibration
+o	decision threshold definitions
+o	score stability rules
+•	Evaluation and validation package 
+o	offline validation results
+o	temporal backtesting
+o	baseline comparison against current integrity score / D4 where applicable
+o	threshold tuning report
+•	Deployment-ready batch scoring package 
+o	reproducible training workflow
+o	batch scoring workflow
+o	packaged release artifact for controlled rollout
+•	Customer rollout package 
+o	controlled rollout plan for at least one real batch customer workflow
+o	analyst review / interpretation guidance
+________________________________________
+4.1.2 Phase 2 (Batch) — Automation
+Phase 2 industrializes the batch MVP by automating training and scoring for batch use cases, while continuing to support feature subsetting for different customer problems.
+Deliverables
+•	Automated batch training pipelines 
+o	parameterized training jobs by batch use case / customer problem
+o	automated feature-subset execution from approved configs
+o	automated model fitting and validation runs
+•	Automated batch scoring pipelines 
+o	scheduled / triggered batch scoring workflows
+o	standardized input/output interfaces
+o	automated score, tier, reason code, and fraud-flag generation
+•	Pipeline orchestration package 
+o	end-to-end workflow orchestration for train → evaluate → score → package
+o	dependency handling and rerun logic
+•	Automated artifact generation 
+o	model artifacts
+o	validation reports
+o	scoring outputs
+o	packaged releases
+•	Configuration management package 
+o	versioned feature subset configs
+o	calibration configs
+o	threshold configs
+o	runtime parameter configs
+•	Release promotion workflow 
+o	standardized promotion from development to preproduction to production
+o	release checklist and approval gates
+•	Operational runbooks 
+o	training runbook
+o	scoring runbook
+o	pipeline failure / recovery runbook
+________________________________________
+4.1.3 Phase 3 (Real-time API) — Standardized API MVP
+Phase 3 moves to a production-ready real-time API MVP for onboarding, transaction monitoring, and fraud ops / adjudication APIs. Unlike the batch phases, this phase uses a single standardized model per API and does not support feature subsetting. Thresholds are calibrated using customer batch ground truth to balance fraud risk and customer friction.
+Deliverables
+•	Real-time API model package 
+o	one standardized real-time tabular model per supported API
+o	production-ready inference artifact
+o	versioned runtime scoring package
+•	Approved real-time feature schema 
+o	one standardized feature set per API
+o	one standardized preprocessing flow
+o	runtime data quality rules
+•	Real-time scoring output framework 
+o	Trust Score (0–100)
+o	Low / Medium / High suspicion tiers
+o	reason codes
+o	potential fraud-type flags
+•	Calibration framework 
+o	calibration methodology for balancing risk appetite vs friction
+o	customer-specific decision threshold tuning using batch fraud / non-fraud ground truth
+o	threshold recommendation outputs by use case and customer
+•	API deployment package 
+o	API-compatible inference implementation
+o	latency validation results
+o	runtime performance test results
+•	Real-time validation package 
+o	deployment validation
+o	threshold tuning results
+o	comparison of decision outcomes under different calibrated thresholds
+•	Controlled rollout package 
+o	rollout plan for at least one live real-time API customer workflow
+o	monitoring and incident handling checklist for launch
+•	Customer calibration playbook 
+o	required ground-truth input format
+o	calibration refresh cadence
+o	interpretation guidance for threshold updates
+________________________________________
+4.1.4 Phase 4 — Continuous Evaluation, Retraining, and Model Lifecycle Management
+Phase 4 adds continuous evaluation, lifecycle management, retraining, and governance for the shared real-time model introduced in Phase 3, while preserving the standardized model approach.
+Deliverables
+•	Continuous evaluation framework 
+o	feature drift monitoring
+o	score drift monitoring
+o	anomaly-rate monitoring
+o	reason-code distribution monitoring
+o	use-case-specific performance monitoring
+•	Monitoring dashboards and alerts 
+o	model health dashboard
+o	drift dashboard
+o	threshold / score stability dashboard
+o	alert rules for retraining, recalibration, investigation, or rollback
+•	Retraining and recalibration package 
+o	scheduled retraining workflow
+o	trigger-based retraining logic
+o	recalibration-only workflow where applicable
+o	promotion criteria for updated models
+•	Artifact and dependency tracking package 
+o	model artifact registry
+o	preprocessing dependency tracking
+o	training metadata logs
+o	evaluation output history
+o	release traceability records
+•	CI/CD support package 
+o	validation gates before promotion
+o	champion / challenger evaluation workflow
+o	rollback and rollback-testing support
+•	Model governance package 
+o	model versioning standard
+o	approval and signoff workflow
+o	release traceability and audit support
+•	Operational playbooks 
+o	drift investigation playbook
+o	recalibration playbook
+o	retraining playbook
+o	production issue response playbook
+________________________________________
+4.1.5 Phase 5 — Graph ML
+Phase 5 extends the framework with Graph ML to improve detection of collective anomalies such as fraud rings, mule networks, suspicious shared infrastructure, and unusual neighbourhood patterns. It also introduces richer relational signals into the broader Trust Score framework.
+Deliverables
+•	Graph ML solution design 
+o	graph use-case design
+o	entity and relationship model
+o	graph scoring and fusion approach
+•	Graph input data specification 
+o	node and edge schema for customer, account, MSISDN, device, SIM, and related entities
+o	graph feature / embedding input requirements
+o	graph data quality rules
+•	Graph model package 
+o	graph autoencoder or equivalent graph anomaly model
+o	trained graph model artifacts
+o	graph scoring logic for collective anomaly detection
+•	Collective anomaly detection framework 
+o	fraud ring detection logic
+o	mule network detection logic
+o	shared infrastructure detection logic
+o	neighbourhood anomaly detection logic
+•	Fusion package 
+o	method for combining graph outputs with tabular Trust Score outputs
+o	fusion calibration and scoring logic
+•	Graph explainability package 
+o	graph-driven reason codes
+o	cluster / neighbourhood explanation outputs for analysts
+•	Graph validation package 
+o	validation report for collective anomaly use cases
+o	comparison against tabular-only baseline
+•	Graph deployment and operating package 
+o	graph inference workflow
+o	packaged release artifacts
+o	operating guidance for graph model execution and monitoring
+5. Out of Scope
+Trust Score 0.5 MVP ML Scope excludes,
+•	feature store design and implementation
+•	upstream batch and real-time data ingestion and raw pipeline engineering
+•	graph database platform implementation
+•	API product implementation
+•	full policy engine development
+•	UI / dashboard development beyond ML monitoring needs
+•	broader cross-industry data expansion beyond current MVP data plan
+6. Data Requirements
+6.1 Phase 1
+Phase 1 is a batch-first MVP for Trust Score 0.5. Its purpose is to prove that EnStream can transform raw telco and EnStream interaction data into a production-ready batch trust score for fraud operations and similar offline use cases, using a minimal but reliable set of features and training data. For Phase 1, the emphasis is not model sophistication; it is having enough clean, well-structured, historically consistent data to generate batch features, train a basic unsupervised model, validate outputs offline, and support at least one real customer batch workflow.
+All data should be stored in raw file format in S3 bucket for bronze layer, and iceberg format in S3 tables in S3 buckets for silver and gold layers.
+6.1.1 Required Raw (Bronze) Data
+account_changes_batch
+Bell, Rogers and Telus event push notifications via webhook/API to our ingestion endpoints the moment a change occurs. Each push contains a single event with its full payload. These are genuine real-time, discrete change events.
+Note: the only real-time event push notifications Rogers send is STATUS_CHANGE-C (combining Account Suspension and Cancelation). There is no phone number change, account activation, or account reactivation events from Rogers.
+Column	Type	Nullable
+id	bigint	NO
+change_key	varchar(70)	NO
+change_type	varchar(20)	NO
+notes	varchar(500)	YES
+timestamp	datetime	NO
+mno-to-change_type mapping
+mno	change_type	change_type (layman’s terms)
+BELL	ADDRESS_CHANGE, DEVICE_CHANGE, MSISDN_CHANGE, MSISDN_CHANGE_FROM, OWNERSHIP_CHANGE, SIM_CHANGE, STATUS_CHANGE-A, STATUS_CHANGE-AA, STATUS_CHANGE-C, STATUS_CHANGE-S	address change,
+device change,		
+phone number changed to,		
+phone number changed from,		
+ownership change,		
+SIM card change,		
+account reactivation,		
+account activation,		
+account cancellation,		
+account suspension		
+TELUS	DEVICE_CHANGE, MSISDN_CHANGE, MSISDN_CHANGE_FROM, SIM_CHANGE, STATUS_CHANGE-A, STATUS_CHANGE-AA, STATUS_CHANGE-C, STATUS_CHANGE-S	device change,
+phone number changed to,		
+phone number changed from,		
+SIM card change,		
+account reactivation,		
+account activation,		
+account cancellation,		
+account suspension		
+ROGERS	DEVICE_CHANGE,	
+SIM_CHANGE, STATUS_CHANGE-C	device change,	
+SIM card change,		
+account suspension or cancellation		
+device_lookup_batch
+Note: Rogers delivers a full state snapshot of all active accounts and their associated phone numbers, devices, and SIMs via SFTP every 2 minutes. Each snapshot is a set of CSV files representing the current state. These are not change events — they are full state representations. Difference has been computed by Application Engineering team and the relationships between MSISDN, IMEI and IMSI at specific timestamp were derived for Rogers.
+Column	Type	Nullable
+id	bigint	NO
+change_key	varchar(70)	NO
+change_key_ats	varchar(70)	YES
+mno	varchar(40)	NO
+imei	varchar(100)	NO
+imsi	varchar(100)	YES
+date	date	NO
+timestamp	datetime	NO
+notes	varchar(500)	YES
+related_id	bigint	YES
+status	varchar(50)	NO
+mno-to-status mapping
+mno	status	status (layman’s terms)
+BELL	IMEI_END,	
+IMEI_START,		
+IMSI_END,		
+IMSI_START	IMEI_END = end of imei association for msisdn	
+IMEI_START = new imei association for msisdn		
+IMSI_END = end of imsi association for msisdn		
+IMSI_START = new imsi association for msisdn		
+TELUS	IMEI_END,	
+IMEI_START,		
+IMEI_START_A,		
+IMEI_START_NC,		
+IMSI_END_C,		
+IMSI_END,		
+IMSI_START,		
+IMSI_START_A,		
+IMSI_START_NC	IMEI_END = end of imei association for msisdn	
+IMEI_START = new imei association for msisdn		
+IMEI_START_A = new imei association for msisdn due to activation event		
+IMEI_START_NC = new imei association due to number change		
+IMSI_END_C = end imsi association due to cancellation		
+IMSI_END = end of imsi association for msisdn		
+IMSI_START = new imsi association for msisdn		
+IMSI_START_A = new imsi association for msisdn due to activation event		
+IMSI_START_NC = new imsi association due to number change		
+ROGERS	IMEI_END,	
+IMEI_START,		
+IMSI_END,		
+IMSI_START	IMEI_END = end of imei association for msisdn	
+IMEI_START = new imei association for msisdn		
+IMSI_END = end of imsi association for msisdn		
+IMSI_START = new imsi association for msisdn		
+fraud labels from telcos and banks
+Telcos and banks provide confirmed fraud outcomes as batch labels. These are fraud investigations take days to weeks to resolve but they are the ground truth against which the unsupervised models are evaluated offline.
+These labels arrive with a lag of 3-90 days after the actual fraud event (time for investigation, customer dispute resolution, and internal review). The label ingestion pipeline normalizes them into a canonical label schema and joins them to the historical anomaly scores that were active at the time of the fraud event, enabling retrospective model evaluation.
+Cross-Sector Data Exchange:x
+•	AwsDataCatalog.cross_sector_data_exchange.all_frauds_phase_1 
+o	CIBC: Impersonation, Scam_OTVC, First Party Fraud, Synthetic ID Fraud, True Name Fraud
+o	Rogers: First Party Fraud
+•	AwsDataCatalog.cross_sector_data_exchange.onboarding_nbc 
+o	NBC: Onboarding Fraud
+•	TBD 
+o	Bell: Bad Actor List, Subscription (hardware) Fraud
+o	Rogers: Bad Actor List, Subscription (hardware) Fraud
+Column	Type	Nullable
+msisdn	STRING	NO
+fraud_type	STRING	NO
+fraud_timestamp	TIMESTAMP	NO
+audit_trail_services_3
+Every call to our API is itself a data source. These inquiry events capture who is asking about which phone number, when, and in what context — and this behavioral signal is fed back into the ML models as input features.
+Column	Type	Nullable
+id	big int	NO
+operation	varchar(50)	NO
+mno	varchar(255)	YES
+msisdn	varchar(20)	YES
+hashed_msisdn	varchar(70)	YES
+encrypted_msisdn	varchar(400)	YES
+partner_id	varchar(50)	YES
+service_provider_id	varchar(50)	YES
+request_id	varchar(50)	YES
+response_code	varchar(50)	YES
+source_ip	varchar(255)	YES
+timestamp	datetime	NO
+date	date	YES
+timestamp_ms	bigint	YES
+process_time	bigint	YES
+brand	varchar(255)	YES
+Partner Configuration
+Contain mappings of partners’ and service providers’ ids to names and threshold configured for corresponding response values
+Column	Type
+id	INTEGER
+partner_id	STRING
+service_provider_id	STRING
+group_name	STRING
+property_name	STRING
+property_value	STRING
+Industry Mapping
+Contain mapping of partners and service providers to industry
+Revenue.xlsx
+TU PortPS API Response
+PortPS-API-Request-Response-Sample.txt
+TransUnion Canada Port PS API Guide.pdf
+TransUnion (TU) PortPS provides a real-time event feed of all number porting requests and completions across all Canadian carriers. This is an industry-wide data source that provides cross-carrier visibility.
+This event type is uniquely valuable because it captures inter-carrier movement that no single telco sees in full (beyond Rogers, Telus and Bell). A fraudster porting a number from Bell to Rogers generates events in both carriers' feeds plus the MNO porting feed, and the porting feed is the only source that ties both sides together.
+Note: PortPS does not give visibility into whether the number is currently active with the unsupported carriers and the number can be recycled with unsupported carrier between porting as well.
+Other Requirements
+•	Files that cannot be parsed or read at all will be put into quarantine folder
+•	Ingestion metadata should be logged in _metadata folder
+•	Schema validation
+**s3://enstream-lake-bronze-dev**
+├── raw/                    # Raw data (legacy)
+├── processed/              # Processed datasets(legacy)
+├── landing/                # Raw data
+			source=<source_name>/
+				dataset=<dataset_name>/
+					ingest_date=YYYY-MM-DD/
+						batch_id=<id>/
+							...files exactly as received...
+├── quarantine/              # Files that cannot be parsed/read at all
+			source=<source_name>/
+				dataset=<dataset_name>/
+					ingest_date=YYYY-MM-DD/
+						batch_id=<id>/
+							...files exactly as received...
+├── _metadata/
+	    ingestion_runs/        # run logs, manifests, row counts
+		  schemas/               # raw observed schemas (optional)
+6.1.2 Required Conformed (Silver) Data
+account_changes_batch
+•	Expand notes field (json format) from bronze layer and use additional logic to map the notes values to mno values
+•	Type normalization: enforce the schema below
+•	Record identifier standardization
+•	Timestamp normalization: for timestmap , ensure it’s loaded using EST timezone
+•	Type normalization, if the values within each field is not consistent, normalize the values per field
+•	Deduplication accou
+•	note: in phase 1, we will not be using subId , msisdnChangeSide, correlationId , otherMSISDN fields
+Column	Type	Description	Example	New Field (Y/N)
+record_id	INTEGER	Unique record identifier	1611966072	Y
+phone_number_AC_hash	STRING	AC hashed identifier for the phone number	88cb41e3ed604aee1bec1a5b886b7d92941b1168a488ce36d6d72f24189ff5e9	Y (change_key )
+event_type	STRING	Type of change event (e.g., SIM or device change)	SIM_CHANGE	Y (change_type)
+event_timestamp	TIMESTAMP	Event timestamp	2023-11-26 01:02:07	Y (timestamp )
+mno	STRING	Mobile network operator	ROGERS	Y (notes )
+subId	STRING	Subscriber identifier	NULL	Y(notes )
+msisdnChangeSide	STRING	Indicates which side initiated the MSISDN change	NULL	Y(notes )
+correlationId	STRING	Correlation ID for linking related events	NULL	N
+otherMSISDN	STRING	Associated or secondary MSISDN	NULL	Y(notes )
+ingestion_ts	TIMESTAMP	Ingestion timestamp	2023-11-26 01:02:07	Y
+source_name	STRING	data source name	MYSQL	Y
+source_event_id	INTEGER	record ID from the source system		Y(id)
+schema_version	INTEGER	version number of the schema used	1	Y
+device_lookup_batch
+•	Expand notes field (json format) from bronze layer and use additional logic to map the notes values to mno values
+•	Type normalization: enforce the schema below
+•	Record identifier standardization
+•	Timestamp normalization: for timestmap , ensure it’s loaded using EST timezone
+•	Type normalization, if the values within each field is not consistent, normalize the values per field
+•	Deduplication
+•	note: in phase 1, we will not be using tac fields
+Column	Type	Description	Example	New Field (Y/N)
+record_id	BIGINT	Unique record identifier	2	Y
+phone_number_AC_hash	STRING	AC hashed identifier for the phone number	948c55eaffc2f16b7cb8f12b7ddca8be87f975af84b9df1ab3e93e54c26396b0	Y(change_key)
+phone_number_AT_hash	STRING	AT hashed identifier for the phone number	NULL	Y(change_key_ats)
+mno	STRING	Mobile network operator	TELUS	N
+imei	STRING	Hashed IMEI identifier	11622f155d0523c51559a2b20eb476f24f84792b054af9472d23fbfafc171823	N
+imsi	STRING	Hashed IMSI identifier	aa3cea068d78359ee0645e1529969a3a4053e510b8c66e31175313440ea42bb6	N
+date	DATE	Event date	2023-07-06	N
+event_timestamp	TIMESTAMP	Event timestamp	2023-07-06 03:18:41	Y (timestamp )
+correlation_id	STRING	Correlation ID for linking related events		Y (notes )
+related_id	STRING	Related record identifier	2	N
+event_type	STRING	Status of the event	IMEI_START	Y (status )
+tac	STRING	Type Allocation Code (device identifier prefix)	35169051	Y (notes )
+oldIMSI	STRING	Previous IMSI value (if available)	NULL	Y (notes )
+oldIMEI	STRING	Previous IMEI value (if available)	NULL	Y (notes )
+fromADCSnapshot	STRING	Flag indicating if record is from ADC snapshot	NULL	Y (notes )
+ingestion_ts	TIMESTAMP	Ingestion timestamp	2023-11-26 01:02:07	Y
+source_name	STRING	data source name		Y
+source_event_id	BIGINT	record ID from the source system		Y
+schema_version	INTEGER	version number of the schema used		Y
+device_lookup_batch data problem
+fraud labels from telcos and banks
+•	Type normalization: enforce the schema below
+•	Record identifier standardization
+•	Timestamp normalization: for timestmap , ensure it’s loaded using EST timezone
+•	Type normalization, if the values within each field is not consistent, normalize the values per field
+•	Deduplication
+Column	Type	Description	Example	New Field (Y/N)
+record_id	BIGINT	Unique record identifier	2	Y
+phone_number_AC_hash	STRING	AC hashed identifier for the phone number	948c55eaffc2f16b7cb8f12b7ddca8be87f975af84b9df1ab3e93e54c26396b0	Y(change_key)
+phone_number_AT_hash	STRING	AT hashed identifier for the phone number	NULL	Y(change_key_ats)
+fraud_timestamp	TIMESTAMP	Fraud Timestamp		N
+fraud_type	STRING	Fraud Type		N
+ingestion_ts	TIMESTAMP	Ingestion timestamp	2023-11-26 01:02:07	Y
+partner				Y
+industry				Y
+correlation_id	STRING	Correlation ID for linking related events		Y
+source_name	STRING	data source name		Y
+source_event_id	INTEGER	record ID from the source system		Y(id)
+schema_version	INTEGER	version number of the schema used		Y
+audit_trail_services_3
+•	Type normalization: enforce the schema below
+•	Record identifier standardization
+•	All the test partner_id and service_provider_id should be excluded
+•	Timestamp normalization: for timestmap , ensure it’s loaded using EST timezone
+•	Type normalization, if the values within each field is not consistent, normalize the values per field
+•	Deduplication
+•	note: in phase 1, we will not be using operation , response_code, source_ip , date , timestamp_ms , processing_time_ms fields
+Column	Type	Description	Example	New Field (Y/N)
+record_id	STRING	Unique record identifier	2	Y (id )
+operation	STRING	Type of operation performed	V1_DATA_MATCHING	N
+mno	STRING	Mobile network operator	ROGERS	N
+msisdn	STRING	Raw MSISDN (if available)	NULL	N
+phone_number_AT_hash	STRING	Hashed MSISDN identifier	3f1cf8630b021ba544ca232961c1306d3723cf3e1eed1ae8bd490c92eabdc583	Y (hashed_msisdn )
+encrypted_msisdn	STRING	Encrypted MSISDN value	GDM1S3I4nyNC32xIEwEPog==	N
+partner_id	STRING	Partner identifier	enstream	N
+partner_name	STRING	Partner name		Y (partner configuration table)
+service_provider_id	STRING	Service provider identifier	testServiceProvider	N
+service_provider_name	STRING	Service provider name		Y (partner configuration table)
+response_code	STRING	Response status or code	SUCCESS	N
+source_ip	STRING	Source IP address of the request	192.168.1.64	N
+api_timestamp	TIMESTAMP	Event timestamp	2023-05-18 02:24:43	Y (timestamp )
+date	DATE	Event date	2023-05-18	N
+timestamp_ms	TIMESTAMP	Event timestamp in milliseconds format	2023-05-18 02:24:43	N
+brand	STRING	Brand name	FIDO	N
+industry	STRING	Industry of the service providers		Y (Abhi’s file for mapping service provider to industry)
+api_type	STRING	Type of API being called	A1: Basic Identity Verification	Y (mapping)
+processing_time_ms	LONG	Processing time in milliseconds	12457	N
+correlation_id	STRING	Correlation ID for linking related events		Y
+source_name	STRING	data source name		Y
+source_event_id	INTEGER	record ID from the source system	RogersAlert1-ansible-03-23-05-18.02.24.03	Y(request_id)
+schema_version	INTEGER	version number of the schema used		Y
+Logic for mapping partner_id to partner_name and service_provider_id to service_provider_name is below:
+partner_mapping = partner_configuration.filter(F.col('property_name') == "merchantName")\
+                                        .filter(F.col('service_provider_id') == 'default')\
+                                        .select('partner_id', F.col('property_value').alias('partner_name'))
+
+service_provider_mapping = partner_configuration.filter(F.col('property_name') == "merchantName")\
+                                        .filter(F.col('service_provider_id') != 'default')\
+                                        .select('service_provider_id', F.col('property_value').alias('service_provider_name'))\
+                                        .withColumn(
+																				    "service_provider_id",
+																				    F.when(F.col("service_provider_id").rlike(r"^\d+$"), # Check if the *entire* string is digits
+																				         F.lpad(F.col("service_provider_id"), 10, "0"))   # Pad if true
+																				    .otherwise(F.col("service_provider_id"))                       # Keep original value if false
+																				)
+audit_trail_services_3 data problem
+TU PortPS API Response
+To be designed
+Other Requirements
+•	Perform data quality rule enforcement: log data quality check results and metrics per MNO and issues with specific records 
+o	Data quality metrics should include: completeness, consistency, uniqueness, timeliness
+•	Perform completeness checks
+•	Partial-delivery handling
+•	Perform referential integrity checks
+TU portTS data problem
+**s3://enstream-lake-silver-dev**
+├── mvp/                     # Minimval Viable Product
+			tables/
+		    dataset=<dataset_name>/               
+		      version=<id>/                         
+		        dt=YYYY-MM-DD/   # event date
+		          ...parquet/delta/iceberg files...
+		  dq/
+		    checks/              # definitions of data quality checks
+		      dataset=<dataset_name>/<id>/...
+		    results/
+		      dataset=<dataset_name>/<id>/
+		        run_date=YYYY-MM-DD/
+		          summary.json    # pass/fail counts per rule
+		          metrics.json    # row counts, null %, distinct %, freshness etc.
+		    issues/
+		      dataset=<dataset_name>/version=<id>/
+		        run_date=YYYY-MM-DD/
+		          severity=warn/
+		            ...failed_rows.parquet        # pointers to rows (pk + reason)
+		          severity=error/
+		            ...failed_rows.parquet        # pointers to rows (pk + reason)
+
+6.1.3 Required Foundational (Gold) Data
+account_changes_canonical_events
+Before creating MSISDN-Account-Customer and generating features, all source data must be normalized into a canonical event schema, at minimum:
+Columns	Descriptions	Values
+ac_event_id	account change event ID	
+phone_number_AC_hash	AC hashed phone number	
+mno	Mobile Network Operator	ROGERS , BELL , TELUS
+ac_event_type	Account Changes Event Type	account_activation_number_recycle , plan_change , account_activation_mno_port , account_activation , account_reactivation ,
+account_suspension ,		
+account_cancellation ,		
+phone_number_change_from ,		
+phone_number_change_to		
+ac_event_ts	Event Timestamp	
+correlation_id	Correlation ID for linking related events	
+updated_ts	Record updated timestamp	
+created_ts	Record created timestamp	
+schema_version	version number of the schema used	
+Note: phone_number_changeevents and separation of account_suspension and account_cancellation , account_activation for Rogers must be derived using device_lookup_batch and account_changes_batch ; plan_change is only for Telus
+•	phone_number_change_from and phone_number_change_to: ROGERS + same imei from device_lookup_batch
+•	account_suspension : ROGERS STATUS_CHANGE-C and no mno_port and have other events (e.g., sim_change or device_change) after STATUS_CHANGE-C
+•	account_cancellation : ROGERS STATUS_CHANGE-C and (mno_port OR have no other events (e.g., sim_change or device_change) after STATUS_CHANGE-C )
+•	account_activation : ROGERS IMSI_START not associated with IMSI_END
+•	plan_change : TELUS STATUS_CHANGE-AA and STATUS_CHANGE-C pairs appear within 24 hours
+msisdn_lifecycle
+MSISDN lifecycle is the first step at creating MSISDN-Account-Customer lineage. It separates out the continual ownership by tracking the phone number per number recycle, mno porting and phone number change.
+Columns	Descriptions	Values
+lifecycle_uid	unique ID of MSISDN lifecycle	
+phone_number_AC_hash	AC hashed phone number	
+mno	Mobile Network Operator	ROGERS , BELL , TELUS
+mno_segment_id	The carrier segment number	
+lifecycle_id	The lifecycle number within the mno segment	
+lifecycle_start_ts	Timestamp when the lifecycle starts	
+lifecycle_end_ts	Timestamp when the lifecycle ends	
+lifecycle_is_open	Whether the lifecycle is still active	0 , 1
+lifecycle_infer_type	How is the lifecycle inferred	ac_events + SIM changes + device changes
+is_start_inferred	whether lifecycle_start_ts is inferred	0 , 1
+is_end_inferred	whether lifecycle_end_ts is inferred	0 , 1
+recycle_ind	Whether this lifecycle potentially represents a reassigned number	0 , 1
+mno_port_ind	whether this lifecycle potentially represents a ported number	0 , 1
+temporary_pn_ind	whether this lifecycle potentially represent a temporary phone number used during porting	0 , 1
+plan_change_ind	whether plan change occur (only applicable to Telus)	0 , 1
+plan_change_cnt	number of plan change event(s)	
+updated_ts	Record updated timestamp	
+created_ts	Record created timestamp	
+schema_version	version number of the schema used	
+Note: msisdn lifecycle table must handle late data arrival when it comes to MNO porting and plan change. Additionally, temporary phone number needs to be captured in the msisdn lifecycle table but to be excluded from training set to count as a phone number change event. msisdn lifecycle table must also handle MSISDN lifecycles that don’t have associated activation and cancellation events.
+msisdn_lifecycle_account_mapping
+MSISDN account mapping is the second step at creating MSISDN-Account-Customer lineage. It capture the lineage of account activation and phone number changes aka continual ownership of phone numbers within an MNO account. There could be multiple ways an account is created: chained phone number events, a single phone number events, with or without an account activation event, or with or without an account cancellation event.
+Columns	Descriptions	Values
+acct_id	unique ID of an account	
+phone_number_AC_hash	AC hashed phone number	
+mno	Mobile Network Operator	ROGERS , BELL , TELUS
+lifecycle_uid	unique ID of a MSISDN lifecycle for tracking the lineage	
+source_event_id	unique ID of the source event(s) for tracking the lineage	this should come from ac_event_id from the mssidn lifecycle table
+from_ts	Timestamp when the lifecycle_uid starts being mapped to acct_id	
+to_ts	Timestamp when the lifecycle_uid- acct_id mapping ends	
+seq_order	the number order of the MSISDN lifecycle within the account	
+segment_type	the type of lifecycle segements in relation to seq_order and matching to account_activation and account_cancellation	final , intermediate , final_unmatched , origin , origin_unmatched , single
+account_type	the type of account dependent on how phone number changes or account activation or account cancellation event(s) mapped to the account	chain , single
+updated_ts	Record updated timestamp	
+created_ts	Record created timestamp	
+schema_version	version number of the schema used	
+msisdn_lifecycle_account_customer_mapping
+MSISDN account customer mapping is the last step at creating MSISDN-Account-Customer lineage. It capture the lineage of account changes, phone number changes and MNO porting across multiple MNO accounts (include unsupported carrier by using enriched TU porting data). A customer is created using MNO porting events only.
+Columns	Descriptions	Values
+customer_id	unique ID of a customer	
+acct_id	unique ID of an account	
+mno	Mobile Network Operator	ROGERS , BELL , TELUS
+phone_number_AC_hash	AC hashed phone number	
+lifecycle_uid	unique ID of a MSISDN lifecycle for tracking the lineage	
+seq_order	the number order of the lifecycle_uid within the customer record	
+source_event_id	unique ID of the source event(s) for tracking the lineage	this should come from ac_event_id from the mssidn lifecycle table
+from_ts	Timestamp when the lifecycle_uid starts being mapped to customer_id	
+to_ts	Timestamp when the lifecycle_uid- customer_id mapping ends	
+segment_type	the type of lifecycle segements in relation to seq_order and matching to account_activation and account_cancellation	final , intermediate , final_unmatched , origin , origin_unmatched , single
+account_type	the type of account dependent on how phone number changes or account activation or account cancellation event(s) mapped to the account	chain , single
+updated_ts	Record updated timestamp	
+updated_source	Whether the customer record is updated using EnStream or TU data	enstream , transunion
+created_ts	Record created timestamp	
+schema_version	version number of the schema used	
+normalized_canonical_events
+This table normalize all the events data from EnStream event push notification (SIM change, Device change) from Rogers, Bell and Telus, EnStream API requests, Porting events from EnStream account activation and cancellation and TU, as well as derived events (e.g., phone number change) in account_changes_canonical_events.
+Note: should not be using device_lookup_batch table for this at all
+Field	Type	Description
+customer_id	string	Top-level customer identity
+acct_id	string	Account identity within a customer
+phone_number_AC_hash	string	AC hashed phone number (subscriber line)
+phone_number_AT_hash	string	AT hashed phone number (subscriber line)
+mno	string	Mobile network operator (Bell, Rogers, Telus)
+event_id	string	from account_changes_canonical_events ( ac_event_id ), TU, audit_trail_services_3 (record_id )
+event_ts	timestamp	When the event occurred in EST
+event_family	string	Canonical category (e.g. sim_change, device_change)
+event_type	string	Raw event type from source system
+event_source	string	Origin system
+event_weight	double	Numeric weight for weighted aggregations (default 1.0) and it only updated for EnStream API call events
+industry	string	optional - only for EnStream API call events
+service_provider_name	string	optional - only for EnStream API call events
+use_case	string	optional - only for EnStream API call events
+updated_ts	Record updated timestamp	
+updated_source	Whether the customer record is updated using EnStream or TU data	enstream_event , enstream_api, transunion
+created_ts	Record created timestamp	
+schema_version	version number of the schema used	
+behavioural_features
+prefix: cust , acct , msisdn
+ef: device_change , sim_change , account_reactivation , account_cancellation , account_suspension , phone_number_change , mno_port , enstream_api_call
+dim: service_provider_id , use_case
+Note: for exclude temporary phone numbers’ phone_number_change events
+window: 1, 3, 7, 30, and 90 days
+Field	Type	Description	Used in ML Model (Y/N)	Missing Value Imputation Rules
+reference_id	string	unique ID for snapshot feature record per scope	Y	
+customer_id	string	Top-level customer identity (optional - customer scope)	Y	
+acct_id	string	Account identity within a customer (optional - account scope)	Y	
+mno	string	Mobile network operator (Bell, Rogers, Telus) (optional - account scope)	Y	
+phone_number_AC_hash	string	AC hashed phone number (subscriber line) (optional - MSISDN scope)	Y	
+phone_number_AT_hash	string	AT hashed phone number (subscriber line) (optional - MSISDN scope)	Y	
+reference_ts	timestamp	the reference timestamp where the features are calculated retrospectively	Y	
+{prefix}_{ef}_cnt_{W}d	integer	unweighted event frequency used for all events aside from enstream_api_call	Y	0
+{prefix}_{ef}_weighted_cnt_{W}d	float	Volume-adjusted count amplifying rare providers (for enstream_api_call only)	Y	0
+{prefix}_{ef}_any_{W}d	integer	event family occurrence indicator	Y	0
+{prefix}_{ef}_last_ts	timestamp	Timestamp of most recent event	N	from_ts (dependent on scope)
+{prefix}_{ef}_days_since_last	integer	event family recency in days	Y	{scope}_node_tenure_days
+{prefix}_{ef}_interval_mean	float	AVG(gap in days between consecutive events)	Y	{scope}_node_tenure_days
+{prefix}_{ef}_interval_median	float	MEDIAN(Inter-arrival gap in days)	Y	{scope}_node_tenure_days
+{prefix}_{ef}_interval_min	integer	MIN(Inter-arrival gap in days)	Y	{scope}_node_tenure_days
+{prefix}_{ef}_interval_max	integer	MAX(Inter-arrival gap in days)	Y	{scope}_node_tenure_days
+{prefix}_{ef}_interval_stddev	float	STDDEV(Inter-arrival gap in days)	Y	0
+{prefix}_{ef}_interval_cv	float	Coefficient Variance = stddev / mean	Y	0
+{prefix}_{ef}_inverse_mean_interarrival_velocity	float	Inter-arrival Velocity = 1 / interval_mean	Y	0
+{prefix}_{ef}_max_monthly_cnt	integer	Peak month activity level	N	0
+{prefix}_{ef}_avg_monthly_cnt	integer	Baseline monthly activity	N	0
+{prefix}_{ef}_monthly_cnt_std	float	Month-to-month volatility	Y	0
+{prefix}_{ef}_active_months	integer	How many months had any events	Y	0
+{prefix}_{ef}_monthly_peak_to_avg	float	Spike ratio: >2 indicates concentrated bursts	Y	0
+{prefix}_{ef}_cnt_1d_over_3d	float	Short-term concentration ratio	Y	0
+{prefix}_{ef}_cnt_7d_over_30d	float	Medium-term concentration ratio	Y	0
+{prefix}_{ef}_cnt_30d_over_90d	float	Long-term trend ratio	Y	0
+{prefix}_{ef}_recency_weighted_intensity	float	weighted recency of an event	Y	0
+{prefix}_{ef}_cumulative_event_slope	float	slope of a linear regression of cumulative event count against elapsed days since the first event	Y	0
+{prefix}_{ef}_days_for_last_{k}_events	integer	how many days it took to accumulate the most recent k events (default k=3 and k=5)	Y	{scope}_node_tenure_days
+{prefix}_{ef}_k_event_velocity_{k}	float	Events per day during the most recent burst	Y	0
+{prefix}_new_{dim}_spread_days	integer	spread of new values appeared quickly	Y	{scope}_node_tenure_days
+{prefix}_days_since_last_new_{dim}	integer	Small value = very recent novel activity	Y	{scope}_node_tenure_days
+{prefix}_{dim}_distinct_cnt	integer	Total unique values ever observed	Y	0
+{prefix}_new_{dim}_event_cnt	integer	How many events correspond to first-time observations	Y	0
+{prefix}_{dim}_event_cnt	integer	Total events for the dimension	Y	0
+{prefix}_new_{dim}_event_frac	float	Fraction of events that are first-time observations	Y	0
+{prefix}_{A}_to_{B}_avg_transition_days	integer	average number of days transitioning from event family A to event family B	Y	{scope}_node_tenure_days
+{prefix}_{A}_to_{B}_min_transition_days	integer	minimal number of days transition from event family A to event family B	Y	{scope}_node_tenure_days
+{prefix}_{A}_to_{B}_transition_velocity	float	velocity of transitioning from event family A to event family B	Y	0
+updated_ts	timestamp	Record updated timestamp	N	
+updated_source	timestamp	Whether the customer record is updated using EnStream or TU data enstream_event , enstream_api, transunion	N	
+created_ts	timestamp	Record created timestamp	N	
+schema_version	integer	version number of the schema used		
+contextual features
+prefix: customer , account , msisdn
+ef: device_change , sim_change , account_reactivation , account_cancellation , account_suspension , phone_number_change , mno_port , enstream_api_call
+hour: 1 - 24 hours (integer)
+day: 1-7 days (integer)
+month: 1-12 months (integer)
+Field	Type	Description	Used in ML Model (Y/N)	Missing Value Imputation Rules
+reference_id	string	unique ID for snapshot feature record per scope	Y	
+customer_id	string	Top-level customer identity (optional - customer scope)	Y	
+acct_id	string	Account identity within a customer (optional - account scope)	Y	
+mno	string	Mobile network operator (Bell, Rogers, Telus) (optional - account scope)	Y	
+phone_number_AC_hash	string	AC hashed phone number (subscriber line) (optional - MSISDN scope)	Y	
+phone_number_AT_hash	string	AT hashed phone number (subscriber line) (optional - MSISDN scope)	Y	
+reference_ts	timestamp	the reference timestamp where the features are calculated retrospectively	Y	
+{prefix}_{ef}_event_hour_entropy	integer	spread/concentration of events across hours of a day	Y	Mean
+{prefix}_{ef}_event_day_of_week_entropy	integer	spread/concentration of events across days of a week	Y	Mean
+{prefix}_{ef}_event_month_entropy	integer	spread/concentration of events across months of a year	Y	Mean
+{prefix}_{ef}_event_{hour}_cnt	integer	count of events per hour	Y	0
+{prefix}_{ef}_event_{day}_cnt	integer	count of events per day (in a week)	Y	0
+{prefix}_{ef}_event_{month}_cnt	integer	count of events per month (in a year)	Y	0
+customer_node_tenure_days	integer	customer tenure in days	Y	N/A
+account_node_tenure_days	integer	account tenure in days	Y	N/A
+msisdn_node_tenure_days	integer	mssidn lifecycle tenure in days	Y	N/A
+updated_ts	timestamp	Record updated timestamp	N	
+updated_source	timestamp	Whether the customer record is updated using EnStream or TU data enstream_event , enstream_api, transunion	N	
+created_ts	timestamp	Record created timestamp	N	
+schema_version	integer	version number of the schema used		
+Notes: Features should be stored in S3 features folder
+**s3://enstream-lake-gold-dev**
+├── mvp/                    # Minimval Viable Product
+			features/
+		    feature_set=<name>/                   
+		      version=<id>/
+		        dt=YYYY-MM-DD/
+		          ...feature table...
+IMSI_IMEI_lineage
+ts05_graph_report.pdf
+Field	Type	Description	
+record_id	string	unique identifier of relational record	
+{source}	string	the node type with outgoing edge	
+{target}	string	the node type with incoming edge	
+{property}	dependent on the property	value of the properties of the relationship	
+updated_ts	timestamp	Record updated timestamp	N
+updated_source	timestamp	Whether the customer record is updated using EnStream or TU data enstream_event , enstream_api, transunion	N
+created_ts	timestamp	Record created timestamp	N
+schema_version	integer	version number of the schema used	
+Source to Target and Property Mapping
+Source	Target	Relationship	Property
+MSISDN	IMEI	SEEN_WITH	frist_seen_ts , last_seen_ts , cooccurrence_cnt
+MSISDN	IMSI	SEEN_WITH	frist_seen_ts , last_seen_ts , cooccurrence_cnt
+Customer	IMEI	USES_IMEI	from_ts , to_ts , duration_days, is_current ,usage_cnt
+Customer	IMSI	USES_IMSI	from_ts , to_ts , duration_days, is_current ,usage_cnt
+IMEI	IMSI	SEEN_WITH	frist_seen_ts , last_seen_ts , cooccurrence_cnt
+relational_features
+https://enstream-my.sharepoint.com/:p:/p/helena_yu/IQDBzYbrsr9tSIwZa9ruVx0hAbj-OXhQx1npRB-wnR-8T0A?e=nr62SC (slide 56)
+prefix: customer , account , msisdn
+prefix: customer , account , msisdn
+node: customer , msisdn , IMEI , IMSI
+window: 1, 3, 7, 30, and 90 days
+Field	Type	Description	
+reference_id	string	unique ID for snapshot feature record per scope	
+customer_id	string	Top-level customer identity (optional - customer scope)	
+acct_id	string	Account identity within a customer (optional - account scope)	
+mno	string	Mobile network operator (Bell, Rogers, Telus) (optional - account scope)	
+phone_number_AC_hash	string	AC hashed phone number (subscriber line) (optional - MSISDN scope)	N
+phone_number_AT_hash	string	AT hashed phone number (subscriber line) (optional - MSISDN scope)	N
+reference_ts	timestamp	the reference timestamp where the features are calculated retrospectively	N
+{source}_{target}_degree_cnt_{W}d	integer	the number of distinct target nodes mapped to the source node within certain time window	
+{source}_{target}_tenure_days	integer	the tenure of the edge in days	
+{source}_{target}_cnt_1d_over_3d	float	Short-term concentration ratio	
+{source}_{target}_cnt_7d_over_30d	float	Short-term concentration ratio	
+{source}_{target}_cnt_30d_over_90d	float	Medium-term concentration ratio	
+{source}_{target}_cnt_90d_over_180d	float	Long-term trend ratio	
+shared_imei_cnt_for_msisdn	integer	unique number of MSISDN on this device	
+shared_imei_cnt_for_customer	integer	unique number of customers on this device	
+shared_imei_cnt_for_imsi	integer	unique number of IMSI on this device	
+is_connected_to_bad_imei	integer	whether the MSISDN was connected to a bad IMEI after the bad IMEI is confirmed	
+updated_ts	timestamp	Record updated timestamp	
+updated_source	timestamp	Whether the customer record is updated using EnStream or TU data enstream_event , enstream_api, transunion	
+created_ts	timestamp	Record created timestamp	
+schema_version	integer	version number of the schema used	
+Notes: The data pipeline from Silver to Gold need to support backfills, historical reruns, and version controls.
+**s3://enstream-lake-gold-dev**
+├── mvp/                    # Minimval Viable Product
+			features/
+		    feature_set=<name>/                   
+		      version=<id>/
+		        dt=YYYY-MM-DD/
+		          ...feature table...
+training_datasets
+•	Remove customers with unusually high number of lifecycles
+•	Remove features that have 99.9% missing values
+•	Remove the outliers of features that have less than 99.9% missing value
+•	Feature Selection: 
+o	Ensemble of IF-Permutation, SPEC, DIFFI, NDFS
+o	Reduce highly correlated features (keep only <0.8)
+•	Split data per bi-weekly snapshots during overlap periods among Rogers, CIBC and NBC trained on reference period
+**s3://enstream-lake-gold-dev**
+├── mvp/                    # Minimval Viable Product
+		training/
+		    problem=<name>/                       
+		      dataset=<name>/        # e.g., dataset=train, dataset=val
+		        version=v1/
+		          snapshot_date=YYYY-MM-DD/
+		            data.parquet
+		            spec.json        # column list, label definition, filters, joins
+		            stats.json       # feature stats for drift/debug
+eval_datasets
+•	Align msisdn and reference_ts with msisdn-account-customer lineage at the scope specified
+•	Evaluated on TS0.5 model at the reference period
+**s3://enstream-lake-gold-dev**
+├── mvp/                    # Minimval Viable Product
+		outputs/
+		    predictions/
+		      model=<name>/version=<id>/dt=YYYY-MM-DD/
+		        predictions.parquet
+		    monitoring/
+		      model=<name>/version=<id>/dt=YYYY-MM-DD/
+		        drift.json
+		        performance.json
+6.2 Data Pipeline
+6.2.1 Ingestion Architecture
+The ingestion step will use AWS Glue as the primary batch data-processing framework. For source datasets stored in a MySQL database in another AWS sub-account, Glue will connect over approved cross-account networking and IAM access, and will extract data incrementally using:
+•	Glue job bookmarks to persist ingestion state between runs
+•	bounded execution windows to restrict each run to a specific lower and upper bound
+•	source-side predicates based on a stable incremental key
+This pattern is required so batch ingestion remains scalable, restartable, and safe for reprocessing. Bookmarks will be used to avoid rereading already-processed records, while bounded execution will support deterministic recovery, controlled backfills, and reruns for specific historical intervals.
+TU PortPS must be ingested through a separate API-pull workflow because it is an external porting source, not part of the cross-account MySQL extraction path.
+The TU pull workflow must:
+•	call the TU PortPS API on a scheduled batch cadence
+•	request records incrementally using a persisted watermark or cursor
+•	land the raw request / response payload in bronze
+•	log request metadata, response status, record counts, and pull window in _metadata
+Raw inputs include
+•	account_changes_batch
+•	audit_trail_services_3
+•	device_lookup_batch
+•	partner_configuration
+•	TU API response
+6.2.2 Bronze Layer
+The bronze layer is the immutable raw landing zone. All extracted or received source data must be written in raw file form to S3. Bronze must preserve the source payload as received, including raw schemas, timestamps, and source-delivery boundaries. It is the replay point for debugging, reprocessing, and audit.
+6.2.3 Silver Layer
+The silver layer is the conformed data layer. Glue jobs must transform bronze data into typed, normalized, deduplicated Iceberg tables in S3 silver. The silver layer must be implemented as partitioned Iceberg tables in S3, versioned by dataset and event date as already specified in the requirements
+6.2.4 Gold Layer
+The gold pipeline must continue to build:
+•	account_changes_canonical_events
+•	msisdn_lifecycle
+•	msisdn_lifecycle_account_mapping
+•	msisdn_lifecycle_account_customer_mapping
+•	normalized_casnonical_events
+The lineage (mapping) construction logic must now be updated to make TU a first-class incremental correction source, not just an optional enrichment:
+•	inserting new lifecycle boundaries when TU confirms a port-in or port-out event
+•	revising inferred lifecycle start or end timestamps when TU is more authoritative than telco-only inference
+•	updating mno_port_ind, temporary_pn_ind, and inference flags where appropriate
+•	preserving versioned history rather than silently overwriting lineage state
+•	updating msisdn-account mapping where TU changes account continuity assumptions
+•	updating msisdn-account-customer mapping where porting connects or separates customer histories across carriers
+•	normalized canonical events so TU porting is represented as part of the event stream consumed by feature generation
+Unresolved lifecycle handling and TU confidence check
+After lifecycle and account/customer lineage construction, the pipeline must identify records that cannot be confidently attached to an MSISDN lifecycle using telco and EnStream data alone. These unresolved records should be placed into a lineage resolution queue.
+For records in this queue, the pipeline must apply the following rule:
+•	if the number’s unresolved state is explained only by a recent port-out within the last 30 days, the pipeline must use TU PortPS data to verify the current port status before permitting Trust Score calculation
+This TU verification step is required to increase confidence that the number has truly exited the prior supported-carrier lifecycle and is not being mis-scored because the lifecycle appears open, broken, or ambiguously terminated. It is especially important because the requirements already note that TU gives cross-carrier visibility but does not guarantee visibility into whether the number remains active with unsupported carriers and that numbers can be recycled with unsupported carriers between porting events.
+The output of this resolution step should be one of:
+•	resolved and attached to lifecycleT
+•	verified recent port-out, lifecycle closed with TU support
+•	still unresolved after TU verification
+Only the first two should proceed to standard TS calculation. Records still unresolved after TU verification should be flagged for exclusion, deferred scoring, or low-confidence handling according to downstream scoring policy
+Feature Generation
+Feature generation remains downstream of lineage and normalized canonical events.
+The feature jobs must consume TU-updated lineage and TU-normalized porting events so that:
+•	tenure reflects corrected ownership continuity
+•	phone-number-change (excluding temporary phone numbers) and MNO-port sequences are correct
+•	customer, account, and MSISDN snapshots reflect cross-carrier lineage as accurately as possible
+•	recent-port-out unresolved numbers are not misrepresented as valid scoring subjects
+This is consistent with the current feature pipeline, which depends on lineage-derived phone number change and MNO port events and computes features relative to point-in-time customer, account, and MSISDN snapshots.
+6.2.5 Orchestration Workflow
+1.	extract incremental MySQL source data using Glue bookmarks and bounded execution
+2.	pull TU PortPS data via API using stored watermark / cursor
+3.	land raw MySQL and TU outputs in bronze
+4.	build conformed silver tables and run DQ checks
+5.	build canonical events
+6.	update MSISDN lifecycle incrementally
+7.	update account and customer lineage incrementally using TU where applicable
+8.	run unresolved-lifecycle detection
+9.	finalize lineage confidence state
+10.	generate normalized canonical events
+11.	generate feature sets
+12.	assemble training / eval datasets
+13.	hand off to the modeling pipeline
+14.	monitor outputs
+7. Model Requirements
+7.1 Phase 1
+7.1.1 ML Problem Statement
+TS0.5 Batch Phase 1 is framed as an unsupervised anomaly detection problem.
+The model is intended to identify phone numbers, accounts, customers or related identities whose behavioural, contextual, and simple relational signals deviate materially from what “normal” looks like for the relevant customer problem. The output is not a final fraud verdict; it is a risk signal used to prioritize fraud investigation, adjudication, case review or to proactively monitor risks in existing customer base. This is consistent with EnStream’s own framing that Trust Score should identify deviations from baseline and support fraud operations, onboarding, and transaction monitoring with a calibrated Trust Score, suspicion tiers, reason codes, and associated potential fraud flags
+Required Inputs
+The model framework should support feature subsetting for different customer problems
+This means:
+•	the underlying model class remains the same: Ensemble of Isolation Forest + KMeans
+•	but the feature subset, preprocessing rules, score calibration, and thresholds could differ by batch customer problem
+•	each batch customer problem may therefore produce its own model configuration even if the model family remains unchanged. It must define: 
+o	problem definition
+o	target scoring entity
+o	approved feature subset
+o	exclusion rules
+o	calibration rules
+o	threshold rules
+o	acceptance metrics
+Required outputs
+The model must output:
+•	Trust Score (0–100)
+•	Calibratable Low / Medium / High suspicion tier
+•	Reason codes (top features explained using shap)
+•	Where appropriate, potential fraud-type flags for fraud operations workflows (mapped manually by product SME)
+7.1.2 Ensemble Models
+For Phase 1 Batch, the MVP model stack will use a classical ensemble
+Required model family
+The MVP must use:
+•	Isolation Forest for global anomaly detection 
+o	Must Have: scikit-learn impelementation: https://scikit-learn.org/stable/modules/generated/sklearn.ensemble.IsolationForest.html#sklearn.ensemble.IsolationForest
+o	Should Test - Training iForest in batches: 
+	Isolation Mondrian Forest: https://github.com/bghojogh/iMondrian 
+	iModarian assume features are on the same scale (scaler should be used for preprocessing)
+o	Future: 
+	Deep Isolation Forest: 
+	https://deepod.readthedocs.io/en/latest/generated/deepod.models.DeepIsolationForestTS.html
+	https://github.com/xuhongzuo/deep-iforest
+•	KMeans for behavioural segmentation and local anomaly detection 
+o	Must Have: 
+	PCA for dimension reduction (preprocessing): https://spark.apache.org/docs/latest/api/python/reference/api/pyspark.ml.feature.PCA.html
+	Pyspark Implementation: https://spark.apache.org/docs/latest/mllib-clustering.html#k-means
+•	an ensemble layer that combines both outputs into one normalized Trust Score and one suspicion tier. This matches both the current scope and the platform design, which identify Isolation Forest and clustering as the batch tabular foundation for anomaly detection
+•	a rule-based layer that use features with high missing data rate as signals associated with specific customer problems (i.e., fraud types) to support anomaly decisioning
+Out of scope for Phase 1
+•	deep learning models
+•	graph models
+•	online learning
+•	automatic retraining
+•	multi-stage semi-supervised stacks
+7.1.3 Hyperparameter Optimization
+7.1.3.1 Isolation Forest
+Isolation Forest hyperparameters must be explicitly tunable and versioned. At minimum, the tuning scope should include:
+•	n_estimators
+•	max_samples
+•	contamination
+•	max_features (b/c we have many features and maybe a lot of noise)
+Optimization objectives
+Because this is unsupervised, the tuning objective should prioritize:
+•	stability of anomaly ranking across time windows
+•	separation quality on retrospective labelled data where available
+•	robustness under feature drift
+•	reasonable anomaly rate by customer problem
+•	consistency of reason-code drivers
+7.1.3.2 Isolation Mondrian Forest
+Isolation Mondrian Forest hyperparameters must be explicitly tunable and versioned. At minimum, the tuning scope should include:
+•	subsampling_size
+•	n_mondrians / num_trees
+(all else left as default)
+Same optimization objectives as above.
+7.1.3.3 KMeans
+Isolation Mondrian Forest hyperparameters must be explicitly tunable and versioned. At minimum, the tuning scope should include:
+•	k 
+o	Should be tuned using 
+	silhouette coefficient
+	elbow test
+o	The chosen k must be justified using 
+	interpretability of the resulting clusters
+	operational usefulness of segment-based anomaly interpretatio
+•	maxIter
+•	maybe tol
+•	sometimes distanceMeasure
+(all else left as default)
+7.1.3.4 Search approach
+For the MVP, the required optimization strategy should be:
+•	manual / guided search
+•	supported by grid search or random search
+•	with all parameter trials tracked in MLflow
+7.1.4 Model Versioning and Formats
+All Phase 1 assets must be stored on S3, and model versions must be tracked through MLflow while using S3 as the backing artifact store.
+Required storage principle
+Everything required to reproduce a model run or perform batch inference must be stored on S3, including:
+•	feature tables
+•	training / validation snapshots
+•	manifests
+•	metrics
+•	trained model artifacts
+•	explainability artifacts
+•	logs
+•	predictions
+•	monitoring outputs
+•	pipeline packages and resolved configs
+**s3://enstream-lake-gold-dev**
+├── mvp/                    # Minimval Viable Product
+			features/
+		    feature_set=<name>/                   
+		      version=<id>/
+		        dt=YYYY-MM-DD/
+		          ...feature table...
+		  training/
+		    problem=<name>/                       
+		      dataset=<name>/        # e.g., dataset=train, dataset=val
+		        version=v1/
+		          snapshot_date=YYYY-MM-DD/
+		            data.parquet
+		            spec.json        # column list, label definition, filters, joins
+		            stats.json       # feature stats for drift/debug
+			models/
+		    model=<name>/
+		      version=<semver_or_run_id>/         # e.g., 1.2.0 or 2026-02-04_abc123
+		        artifact/                         # model binaries
+		        metrics/                          # eval metrics
+		        explainability/                   # shap, feature importance
+		        lineage.json                      # pointers to silver/gold inputs
+			outputs/
+		    predictions/
+		      model=<name>/version=<id>/dt=YYYY-MM-DD/
+		        predictions.parquet
+		    monitoring/
+		      model=<name>/version=<id>/dt=YYYY-MM-DD/
+		        drift.json
+		        performance.json
+			pipelines/
+			  pipeline_name/
+			    version=<id>/
+			      build/
+			        package.whl                # or lambda.zip, spark-job.jar
+			        image_digest.txt           # if containerized
+			      config/
+			        resolved_config.json       # exact config used (after templating)
+Storage requirements by layer
+features/Must store versioned feature sets by name, version, and date, because Phase 1 supports feature subsetting by batch use case.
+experiments/Must store all experiment metadata and artifacts for reproducibility and auditability.
+training/Must store exact dataset snapshots used for each problem and each split, along with the spec and feature statistics.
+models/Must serve as the durable model registry on S3 for batch model binaries, metrics, explainability outputs, and lineage.
+outputs/Must store inference outputs and monitoring files by model version and date.
+pipelines/Must store the build artifact and exact resolved configuration used for the training / inference pipeline version.
+Required model artifact formats
+•	model.pkl or model.joblib is acceptable
+•	the exact Python environment / package requirements should be traceable through pipeline packaging and configuration
+•	each model version must have: 
+o	metrics
+o	explainability outputs
+o	lineage metadata
+o	link to the training snapshot
+o	link to the feature subset version
+o	link to the MLflow run
+Required lineage metadata
+lineage.json must include:
+•	raw / curated dataset versions used
+•	feature set version
+•	split definition
+•	preprocessing configuration
+•	model hyperparameters
+•	calibration version
+•	run ID
+•	model package version
+7.1.5 Experimental Metadata
+All experimentation must be tracked in MLflow.
+MLflow requirements
+For every experiment run, MLflow must capture:
+•	run ID
+•	project name
+•	experiment name
+•	feature subset name and version
+•	training dataset version and snapshot date
+•	model class
+•	model hyperparameters
+•	evaluation metrics
+•	calibration parameters
+•	artifact pointers
+•	diagnostic plots
+•	logs
+•	user / owner
+•	run timestamp
+•	notes on the batch customer problem / use case
+**s3://enstream-lake-gold-dev**
+├── mvp/                    # Minimval Viable Product
+			features/
+		    feature_set=<name>/                   
+		      version=<id>/
+		        dt=YYYY-MM-DD/
+		          ...feature table...
+		  experiments/
+	      project=<project_name>/                 
+	        experiment=<experiment_name>/        
+	          run_date=YYYY-MM-DD/
+	            run_id=<uuid_or_mlflow_run_id>/
+	              params.json
+	              metrics.json                 
+	              data/
+	                train_manifest.json  # pointers to training snapshot(s)
+	                feature_list.json
+	              artifacts/
+	                model.pkl or model.joblibs 
+	                plots/...
+	                confusion_matrix.json
+	                shap/...
+	              logs/
+	                stdout.log
+	                stderr.log
+7.1.6 Error Analysis
+Required error analysis views
+Where labels exist, the team must analyze:
+•	false positives
+•	false negatives
+•	low-score but later-confirmed legitimate cases
+•	high-score but later-confirmed fraud cases
+•	instability across adjacent batch runs
+•	misbehaviour tied to sparse or degraded features
+•	error patterns by carrier
+•	error patterns by customer problem / feature subset
+Required outputs
+For each release candidate:
+•	error analysis summary
+•	top false-positive archetypes
+•	top false-negative archetypes
+•	recommendation on whether the issue should be addressed by: 
+o	feature changes
+o	preprocessing changes
+o	hyperparameter changes
+o	threshold changes
+o	heuristic overlays
+7.1.7 Modeling pipeline
+The pipeline must support manual retraining and batch inference, not online learning or automatic retraining. It must also preserve the Phase 1 modeling requirement that the underlying model family remains an Isolation Forest + KMeans ensemble, while allowing feature subsetting by batch customer problem.
+7.1.7.1 Inputs
+The modeling pipeline must consume:
+•	versioned gold feature sets
+•	problem-specific training / validation / evaluation snapshots
+•	the selected feature subset for the target batch customer problem
+•	calibration and threshold configuration
+•	optional fraud / non-fraud retrospective labels for offline evaluation
+•	lineage and dataset manifests for reproducibility
+7.1.7.2 Pipeline Stages
+Step 1 — Load training snapshot
+Read the versioned training snapshot from S3 gold and validate that:
+•	the expected feature subset is present
+•	schema matches spec.json
+•	dataset version and snapshot date are resolved
+•	required metadata and manifests are available
+Step 2 — Apply preprocessing
+Apply the approved preprocessing package for the batch customer problem, including:
+•	imputation
+•	feature subsetting rules
+•	scaling / normalization where required
+•	PCA or other dimensionality reduction where configured for KMeans preprocessing
+•	outlier handling rules
+•	feature exclusion rules
+•	data quality filters
+•	feature selection rules: 
+o	Ensemble of IF-Permutation, SPEC, DIFFI, NDFS
+o	Reduce highly correlated features (keep only <0.8)
+Data preprocessing must be deterministic, parameterized, and tied to the selected problem configuration
+Step 3.1 — Train Isolation Forest
+Train the Isolation Forest component using the approved hyperparameter configuration. The current requirements specify Isolation Forest as the global anomaly detector in the Phase 1 classical ensemble, with tunable parameters
+Step 3.2 — Train KMeans
+Train the KMeans component for behavioural segmentation and local anomaly detection using the selected problem-specific feature subset and preprocessing output. The current requirements specify KMeans as the local/segment-based anomaly component, with cluster count justified using silhouette coefficient and elbow test
+Step 4 — Score and combine
+Generate:
+•	Isolation Forest anomaly outputs
+•	KMeans segment-relative anomaly outputs
+•	combined ensemble score
+•	normalized Trust Score (0–100) 
+o	the higher the score the most trustworthy/least anomalous the mobile identity is
+•	Low / Medium / High suspicion tier
+•	reason-code candidates
+•	potential fraud-type flags where enabled
+Step 5 — Offline evaluation
+Run the required evaluation suite:
+•	recall@k where labels exist
+•	precision@k where labels exist
+•	KS statistics or equivalent anomaly-separation metric where labels are sparse or partial
+•	baseline lift vs D4 / current integrity score where applicable
+•	score stability across time windows
+•	robustness under missing inputs
+•	error analysis by carrier and customer problem
+Step 6 — Explainability generation
+Generate model explainability outputs for the release candidate, including:
+•	reason-code mappings
+•	top-driver outputs
+•	SHAP-based artifacts where supported
+•	plots and diagnostic summaries
+Step 7 — Persist artifacts and register experiment
+Log the full run to MLflow and persist all outputs to the required S3 structure
+Step 8 — Manual promotion
+Phase 1 promotion is manual. A release candidate is promoted only after:
+•	evaluation review
+•	error analysis review
+•	reason-code review
+•	threshold review
+•	signoff for controlled batch rollout
+The Phase 1 is manual-retraining / controlled-rollout posture and with the broader requirement for human-in-the-loop rollout and release control.
+Step 9 - Batch inference
+The batch inference pipeline should reuse the same preprocessing and scoring logic as training-time evaluation, but applied to the target production population.
+The inference flow should be:
+1.	load the approved model version from S3
+2.	load the matching feature-set version for the inference date
+3.	validate schema and feature coverage
+4.	apply deterministic preprocessing
+5.	run Isolation Forest and KMeans scoring
+6.	compute ensemble Trust Score, tier, reason codes, and flags
+7.	write predictions to: 
+o	outputs/predictions/model=<name>/version=<id>/dt=YYYY-MM-DD/
+8.	write monitoring outputs to: 
+o	outputs/monitoring/model=<name>/version=<id>/dt=YYYY-MM-DD/
+7.1.8 Acceptance Criteria
+Required evaluation dimensions
+Evaluation must include:
+•	recall@k where labels exist
+•	precision@k where labels exist
+•	KS statistics or equivalent anomaly separation metric where labels are sparse or partial
+•	baseline lift vs current integrity score / D4 where applicable
+•	score distribution stability across time
+•	robustness under missing or delayed inputs
+•	interpretability of top drivers and reason codes
+•	batch inference runtime at target volume
+Required acceptance criteria
+A Phase 1 model should only be accepted if it demonstrates:
+•	performance materially better than chance
+•	measurable separation of suspicious vs non-suspicious cases
+•	consistent lift over D4 or the current integrity baseline where possible
+•	stable scoring behaviour across time windows
+•	operationally interpretable outputs for fraud operations
+•	successful batch scoring in at least one real customer workflow
+Here’s what I’m seeing in the workspace for Neo4j (mostly tied to Project Prism – Prime Radiant / Data & AI work):
+Linear issues (Data & AI)
+•	DAT-51 — “Neo4j Heterogeneous Schema Implementation” (In Progress): modeling hashed telecom data into a Neo4j CE graph (node types like MNO, Account, MSISDN, SIM, Device, Event, etc.) with temporal relationships.[1]
+•	DAT-80 — “Perform volume test load (AWS table)” (In Progress): Cypher ingestion + tuning parallelism/batch size; notes mention PySpark integration errors being investigated.[2]
+•	DAT-77 — “Allocate a machine on AWS for Neo4j Community Edition installation” (Todo): provision/install/configure Neo4j CE; mentions Neo4j installed at **10-0-0-32.ca-central-1.compute.internal** and ports 7474/7687 accessible but browser access blocked pending approval.[3]
+•	DAT-78 — “Create a request to access Neo4j via a browser” (Todo): request to enable browser access via the machine ports; references the same host **10-0-0-32.ca-central-1.compute.internal**.[4]
+•	DAT-79 — “Perform a test load via code” (Done): manual Cypher ingestion to validate installation.[5]
+Notion docs mentioning Neo4j
+•	“Trust Score 0.5 MVP ML Scope” includes Neo4j operational snippets (bolt connection to bolt://10.0.0.32:7687, batch delete, constraints, etc.).[6]
+•	“Security Initiatives Prioritized” includes an instance entry: neo4j_mgmt (i-0694eaf93ca6eb2d1) (looks like an EC2 instance label/list).[7]
+If you tell me what you meant by “neo4j” (e.g., access details, where it’s running, project status, or how to connect/query), I can zero in on the right piece.
+

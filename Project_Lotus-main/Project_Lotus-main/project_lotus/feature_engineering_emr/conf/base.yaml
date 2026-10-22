@@ -1,0 +1,87 @@
+# =============================================================================
+# Feature engineering - defaults
+# =============================================================================
+# Loaded first; conf/<environment>.yaml is loaded on top and wins key by key.
+# Every value here is the default the SageMaker version of the job used
+# (sagemaker/feature_engineering.py), written out so it can be read and changed
+# without opening the code. Nothing environment-specific belongs here.
+# =============================================================================
+
+features:
+  # ---- where everything goes (set per environment) --------------------------
+  # output_root:          s3://<bucket>/<prefix>/      REQUIRED; train/ and test/ go here
+  # work_root:            default <output_root>/_work           scratch tables
+  # feature_store_root:   default <output_root>/feature_store   the 12 feature groups
+
+  # ---- windows (notebook cell 08) ------------------------------------------
+  window_size_days: 14
+  use_window_end_as_reference_ts: false
+
+  # ---- data split -----------------------------------------------------------
+  # Dynamic train/test split percentages and random seed for reproducible splits.
+  data_split:
+    train_percentage: 80
+    test_percentage: 20
+    random_seed: 42
+
+  # ---- feature-group outputs (notebook cell 26) -----------------------------
+  output_version: v5.0.bi-weekly
+  force_overwrite: false
+  reuse_scoped_events: true
+  fail_fast: false
+  output_partitions: 512
+  min_output_partitions: 128
+  enable_row_counts: false
+
+  # ---- input record selection ------------------------------------------------
+  # Input records are kept when they are after the latest successful Gold
+  # watermark_to (run_control below) AND inside [window_start_ts,
+  # window_end_exclusive_ts). start_date/end_date (YYYY-MM-DD, end inclusive), if
+  # BOTH are set, narrow that further; leave them null to use the windows alone.
+  # limit: random sample of at most this many records per input, taken after the
+  # filters above, with a fixed seed (limit_seed) so reruns pick the same
+  # records; empty = all. CLI --start-date / --end-date / --limit override these.
+  start_date: null
+  end_date: null
+  limit: 10000
+  limit_seed: 42
+
+  # ---- run control -----------------------------------------------------------
+  # enabled: true = every run starts after the latest successful watermark_to of
+  # `gold_job_name` in the Gold table (read only). `table` is this job's own audit
+  # log of runs (create it with scripts/create_run_control_table.sql); it is never
+  # used to decide where a run starts. false = no watermark lower bound.
+  run_control:
+    enabled: true 
+    table: null          # glue_catalog.<db>.feature_engineering_run_control
+    job_name: ml_feature_engineering
+    gold_table: glue_catalog.lotus_sandbox_gold_curated.gold_run_control
+    gold_job_name: gold_account_customer_map
+
+  # ---- cohort sampling (notebook cell 27) - off = every customer -------------
+  sample_enabled: false
+  sample_fraction: 1.0
+  sample_buckets: 100
+  sample_salt: biweekly_v4
+  sample_per_window: false
+  sample_verify: true
+
+  # ---- resume (notebook cell 28) --------------------------------------------
+  # Re-run a failed run under its own id: groups that already succeeded are
+  # skipped (read from that run's manifest).
+  resume_run_id: null
+  max_windows_per_run: null
+
+  # ---- inputs (notebook cell 06) - table names set per environment -----------
+  inputs:
+    enstream_excluded_api_type: internal
+
+  fraud_labels:
+    table: null
+    customer_col: customer_id
+    fraud_type_col: fraud_type
+    fraud_timestamp_col: fraud_timestamp
+    fraud_source: Phase1-v1.0
+
+  # Extra Spark settings, applied last (they win over the notebook's settings).
+  spark_conf: {}

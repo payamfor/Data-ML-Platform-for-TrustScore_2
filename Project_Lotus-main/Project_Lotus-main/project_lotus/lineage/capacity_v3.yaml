@@ -1,0 +1,26 @@
+# Execution-only overlay. Pass AFTER your existing working lotus_sandbox.yaml.
+# It deliberately contains no database, table, source or enrichment settings.
+# Apply the SAME overlay to every stage of a logical run.
+slice:
+  # Operational tripwire on distinct phone hashes, NOT source-event row count.
+  # Allows a seven-million-phone workload plus closure growth, up to this cap.
+  # This is not a claim that capacity has been load-tested on EMR.
+  max_size: 10000000
+  # A long relationship chain may need more than the previous round cap. V3 truncates
+  # the Spark plan each round. Never publish an incompletely closed scope.
+  max_iterations: 100
+  require_convergence: true
+  inline_limit: 20000
+  # Broadcast only a counted small frontier, never the full visited population.
+  # Set to 0 to use distributed joins for every frontier.
+  frontier_broadcast_limit: 10000
+
+spark:
+  conf:
+    # Starting point for the displayed four r5.2xlarge workers. Tune using
+    # actual shuffle bytes, spill and task duration; row count alone is not sizing.
+    spark.sql.shuffle.partitions: "400"
+    spark.sql.adaptive.enabled: "true"
+    spark.sql.adaptive.coalescePartitions.enabled: "true"
+    spark.sql.adaptive.skewJoin.enabled: "true"
+    spark.sql.adaptive.advisoryPartitionSizeInBytes: "67108864"

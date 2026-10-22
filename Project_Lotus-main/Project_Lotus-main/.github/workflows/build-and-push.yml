@@ -1,0 +1,300 @@
+name: Build and Push — ECR Preprocessing Image
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/build-and-push.yml"
+
+  workflow_dispatch: {}
+
+  workflow_call:
+    inputs:
+      environment:
+        description: "GitHub environment name."
+        type: string
+        required: false
+        default: data-sandbox-infra
+
+      aws_region:
+        description: "AWS region where ECR lives."
+        type: string
+        required: false
+        default: ca-central-1
+
+      ecr_repository:
+        description: "ECR repository name."
+        type: string
+        required: false
+        default: lotus-sandbox-preprocessing
+
+      aws_account_id:
+        description: "AWS account ID that owns the ECR repository."
+        type: string
+        required: false
+        default: "162591926854"
+
+      image_tag:
+        description: "Optional additional immutable image tag."
+        type: string
+        required: false
+        default: ""
+
+      build_args:
+        description: "Newline-separated Docker build arguments."
+        type: string
+        required: false
+        default: ""
+
+    outputs:
+      image_uri:
+        description: "Full ECR URI of the SHA-tagged image."
+        value: ${{ jobs.build-and-push.outputs.image_uri }}
+
+      image_digest:
+        description: "Image digest."
+        value: ${{ jobs.build-and-push.outputs.image_digest }}
+
+
+env:
+  AWS_REGION: ca-central-1
+  ECR_REPOSITORY: lotus-sandbox-preprocessing
+  AWS_ACCOUNT_ID: "162591926854"
+
+
+jobs:
+
+  build-and-push:
+
+    name: Build & push preprocessing image
+
+    runs-on: ubuntu-latest
+
+    environment: ${{ inputs.environment || 'data-sandbox-infra' }}
+
+    permissions:
+      id-token: write
+      contents: read
+
+    outputs:
+      image_uri: ${{ steps.meta.outputs.image_uri }}
+      image_digest: ${{ steps.push.outputs.digest }}
+
+    steps:
+
+      # ---------------------------------------------------------
+      # Checkout
+      # ---------------------------------------------------------
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+
+      # ---------------------------------------------------------
+      # AWS OIDC authentication
+      # ---------------------------------------------------------
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ inputs.aws_account_id || env.AWS_ACCOUNT_ID }}:role/lotus-sandbox-ecr-push-role
+          role-session-name: github-ecr-push-${{ github.run_id }}
+          aws-region: ${{ inputs.aws_region || env.AWS_REGION }}
+
+
+      # ---------------------------------------------------------
+      # Login to ECR
+      # ---------------------------------------------------------
+
+      - name: Log in to ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+
+
+      # ---------------------------------------------------------
+      # Calculate image name
+      # ---------------------------------------------------------
+
+      - name: Compute image metadata
+        id: meta
+        env:
+          REGISTRY: ${{ steps.ecr-login.outputs.registry }}
+          REPOSITORY: ${{ inputs.ecr_repository || env.ECR_REPOSITORY }}
+          SHA_TAG: ${{ github.sha }}
+
+        run: |
+
+          IMAGE_BASE="$REGISTRY/$REPOSITORY"
+
+          echo "image_base=$IMAGE_BASE" >> "$GITHUB_OUTPUT"
+
+          echo "image_uri=$IMAGE_BASE:$SHA_TAG" >> "$GITHUB_OUTPUT"
+
+          echo "Image:"
+          echo "$IMAGE_BASE:$SHA_TAG"
+
+
+      # ---------------------------------------------------------
+      # Check whether immutable SHA tag already exists
+      # ---------------------------------------------------------
+
+      - name: Check if image already exists
+        id: check-image
+        env:
+          AWS_REGION: ${{ inputs.aws_region || env.AWS_REGION }}
+          REPOSITORY: ${{ inputs.ecr_repository || env.ECR_REPOSITORY }}
+          SHA_TAG: ${{ github.sha }}
+
+        run: |
+
+          if aws ecr describe-images \
+            --repository-name "$REPOSITORY" \
+            --image-ids imageTag="$SHA_TAG" \
+            --region "$AWS_REGION" \
+            >/dev/null 2>&1
+          then
+
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+
+            echo "Image already exists:"
+            echo "$REPOSITORY:$SHA_TAG"
+
+          else
+
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+
+            echo "Image does not exist."
+            echo "A new image will be built."
+
+          fi
+
+
+      # ---------------------------------------------------------
+      # Build image only when SHA tag does not exist
+      # ---------------------------------------------------------
+
+      - name: Build image
+        id: build
+        if: steps.check-image.outputs.exists != 'true'
+        env:
+          IMAGE_BASE: ${{ steps.meta.outputs.image_base }}
+          SHA_TAG: ${{ github.sha }}
+          BUILD_ARGS: ${{ inputs.build_args }}
+
+        run: |
+
+          BUILD_ARG_FLAGS=""
+
+          if [ -n "$BUILD_ARGS" ]; then
+
+            while IFS= read -r line; do
+
+              if [ -n "$line" ]; then
+                BUILD_ARG_FLAGS="$BUILD_ARG_FLAGS --build-arg $line"
+              fi
+
+            done <<< "$BUILD_ARGS"
+
+          fi
+
+          docker build \
+            $BUILD_ARG_FLAGS \
+            -t "$IMAGE_BASE:$SHA_TAG" \
+            project_lotus/project_lotus/preprocessing
+
+
+      # ---------------------------------------------------------
+      # Push SHA image
+      # ---------------------------------------------------------
+
+      - name: Push image and capture digest
+        id: push
+        if: steps.check-image.outputs.exists != 'true'
+        env:
+          IMAGE_BASE: ${{ steps.meta.outputs.image_base }}
+          SHA_TAG: ${{ github.sha }}
+          EXTRA_TAG: ${{ inputs.image_tag }}
+
+        run: |
+
+          echo "Pushing SHA-tagged image..."
+
+          docker push "$IMAGE_BASE:$SHA_TAG"
+
+          DIGEST=$(docker inspect \
+            --format='{{index .RepoDigests 0}}' \
+            "$IMAGE_BASE:$SHA_TAG" \
+            | cut -d@ -f2)
+
+          echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
+
+          # Optional additional immutable tag
+          if [ -n "$EXTRA_TAG" ]; then
+
+            echo "Pushing additional tag: $EXTRA_TAG"
+
+            docker tag \
+              "$IMAGE_BASE:$SHA_TAG" \
+              "$IMAGE_BASE:$EXTRA_TAG"
+
+            docker push \
+              "$IMAGE_BASE:$EXTRA_TAG"
+
+          fi
+
+
+      # ---------------------------------------------------------
+      # If image already exists, retrieve its digest
+      # ---------------------------------------------------------
+
+      - name: Get existing image digest
+        id: existing
+        if: steps.check-image.outputs.exists == 'true'
+        env:
+          AWS_REGION: ${{ inputs.aws_region || env.AWS_REGION }}
+          REPOSITORY: ${{ inputs.ecr_repository || env.ECR_REPOSITORY }}
+          SHA_TAG: ${{ github.sha }}
+
+        run: |
+
+          DIGEST=$(aws ecr describe-images \
+            --repository-name "$REPOSITORY" \
+            --image-ids imageTag="$SHA_TAG" \
+            --region "$AWS_REGION" \
+            --query 'imageDetails[0].imageDigest' \
+            --output text)
+
+          echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
+
+          echo "Existing image digest:"
+          echo "$DIGEST"
+
+
+      # ---------------------------------------------------------
+      # Final summary
+      # ---------------------------------------------------------
+
+      - name: Summary
+        env:
+          IMAGE_URI: ${{ steps.meta.outputs.image_uri }}
+          NEW_DIGEST: ${{ steps.push.outputs.digest }}
+          EXISTING_DIGEST: ${{ steps.existing.outputs.digest }}
+
+        run: |
+
+          DIGEST="$NEW_DIGEST"
+
+          if [ -z "$DIGEST" ]; then
+            DIGEST="$EXISTING_DIGEST"
+          fi
+
+          echo "### ECR image" >> "$GITHUB_STEP_SUMMARY"
+
+          echo "| | |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|---|---|" >> "$GITHUB_STEP_SUMMARY"
+
+          echo "| **Image** | \`$IMAGE_URI\` |" >> "$GITHUB_STEP_SUMMARY"
+
+          echo "| **Digest** | \`$DIGEST\` |" >> "$GITHUB_STEP_SUMMARY"
+
+          echo "| **Commit** | \`${{ github.sha }}\` |" >> "$GITHUB_STEP_SUMMARY"

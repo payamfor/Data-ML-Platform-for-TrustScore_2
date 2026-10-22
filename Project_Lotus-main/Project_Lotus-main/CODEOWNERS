@@ -1,0 +1,11 @@
+# Data team: infra of the data accounts.
+/accounts/data-*/infra/                          @data-and-ai/dataai
+
+# InfraSec: security resources, the dev and qa callers, and change-management enforcement.
+/accounts/*/security/                            @data-and-ai/infrasec
+/.github/workflows/terraform-data-dev.yml        @data-and-ai/infrasec
+/.github/workflows/terraform-data-qa.yml         @data-and-ai/infrasec
+/CODEOWNERS                                      @data-and-ai/infrasec
+
+# data-sandbox has no owner.
+/accounts/data-sandbox/

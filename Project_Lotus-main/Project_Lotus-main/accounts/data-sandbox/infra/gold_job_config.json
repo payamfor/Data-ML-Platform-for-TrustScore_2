@@ -1,0 +1,41 @@
+{
+  "application": "s3://lotus-sandbox-gold-curated-data/pipeline-code/gold/v3/run_gold.py",
+  "python_package": "s3://lotus-sandbox-gold-curated-data/pipeline-code/gold/v3/gold_pipeline.zip",
+  "config": "s3://lotus-sandbox-gold-curated-data/pipeline-code/gold/v1/lotus_sandbox.yaml",
+  "config_overlays": [
+    "s3://lotus-sandbox-gold-curated-data/pipeline-code/gold/v3/capacity_v3.yaml"
+  ],
+  "staging_root": "s3://lotus-sandbox-gold-curated-data/staging/lineage_auto/",
+  "job": "lineage",
+  "recovery": {
+    "control_finalizer_application": "s3://lotus-sandbox-gold-curated-data/pipeline-code/gold/v3/recovery/v1/recover_gold_run.py",
+    "publish_rollback_application": "s3://lotus-sandbox-gold-curated-data/pipeline-code/gold/v3/recovery/v1/rollback_gold_publish.py",
+    "python_package": "s3://lotus-sandbox-gold-curated-data/pipeline-code/gold/v3/recovery/v1/gold_recovery_tools.zip",
+    "control_table": "glue_catalog.lotus_sandbox_gold_curated.gold_run_control",
+    "publish_failure_policy": "rollback_then_fail",
+    "snapshot_retention_days": 7
+  },
+  "spark_submit_flags": [
+    "--deploy-mode",
+    "cluster",
+    "--driver-memory",
+    "24g",
+    "--executor-memory",
+    "4g",
+    "--executor-cores",
+    "2"
+  ],
+  "spark_confs": [
+    "spark.executor.memoryOverhead=1g",
+    "spark.driver.memoryOverhead=4g",
+    "spark.yarn.maxAppAttempts=1",
+    "spark.dynamicAllocation.preallocateExecutors=false",
+    "spark.sql.defaultCatalog=spark_catalog",
+    "spark.sql.extensions=org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions",
+    "spark.sql.catalog.glue_catalog.warehouse=s3://lotus-sandbox-gold-curated-data/tables/",
+    "spark.sql.session.timeZone=America/Toronto",
+    "spark.executorEnv.TZ=America/Toronto",
+    "spark.yarn.appMasterEnv.TZ=America/Toronto"
+  ],
+  "first_run_watermark_from": "1970-01-01 00:00:00"
+}

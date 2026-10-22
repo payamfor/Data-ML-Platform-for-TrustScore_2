@@ -1,0 +1,24 @@
+# Trust Score 0.5 Training Dataset Sampling Strategy
+
+1. Data Quality Filter → Remove impossible/corrupt records
+
+- 
+- Remove numbers with clear data ingestion artifacts (duplicate records, timestamp anomalies, null-heavy feature vectors)
+
+2. Lifecycle Completeness Tiering → (A/B/C)
+
+- A. Full lifecycle
+- B. Left-censored: Already active when EnStream data begin (missing early behaviours)
+    - `observed_lifecycle_fraction` = `days_since_first_observed / estimated_total_active_days`
+- C. Fragmented: Very short observation windows, appear and disappear quickly, or have massive gaps
+    - *hold these out of the primary training set entirely*
+
+3. Lifecycle Weirdness Scoring → Quarantine outliers
+
+- Define weird quantitatively
+    - e.g., total active days, number of activation/deactivation events, longest dormancy gap, behavioral entropy over time, and ratio of active days to calendar span. Then use a simple outlier method (even just percentile thresholds) on these meta-features to flag lifecycle outliers
+- *Evaluate separately (might be fraud, might be caused by data quality)*
+- *Need to be cross-referenced against the fraud labels*
+1. Temporal-based Sampling 
+- Undersample or downweight periods near lifecycle boundaries
+    - first few days after activation, last few days before deactivation), because behavior during these transitions is inherently atypical and could teach your model that transitional behavior is "normal."

@@ -1,0 +1,121 @@
+name: Operations — Stop ML Pipeline Execution
+
+on:
+  workflow_dispatch:
+    inputs:
+      execution_arn:
+        description: "Exact Step Functions execution ARN"
+        required: true
+        type: string
+
+      reason:
+        description: "Reason for stopping the execution"
+        required: true
+        type: string
+
+      confirmation:
+        description: "Enter STOP to confirm"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  stop-execution:
+    name: Stop approved Lotus execution
+    runs-on: ubuntu-latest
+    environment: data-sandbox-operations
+
+    env:
+      AWS_REGION: ca-central-1
+      AWS_ACCOUNT_ID: "162591926854"
+      EXECUTION_ARN: ${{ inputs.execution_arn }}
+      STOP_REASON: ${{ inputs.reason }}
+      CONFIRMATION: ${{ inputs.confirmation }}
+
+    steps:
+      - name: Validate confirmation
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "$CONFIRMATION" != "STOP" ]]; then
+            echo "Confirmation must be exactly STOP."
+            exit 1
+          fi
+
+      - name: Validate execution ARN
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          EXPECTED_EXECUTION_ARN="arn:aws:states:${AWS_REGION}:${AWS_ACCOUNT_ID}:execution:lotus-sandbox-trust-score-ml-training:d343f118-a231-37df-198e-9d994930d41d_265accbe-bd1c-1dd1-d717-cabd2ba8ab06"
+
+          if [[ "$EXECUTION_ARN" != "$EXPECTED_EXECUTION_ARN" ]]; then
+            echo "Execution ARN does not match the approved execution."
+            exit 1
+          fi
+
+          echo "Execution ARN matches the approved execution."
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::162591926854:role/lotus-sandbox-github-pipeline-operations
+          role-session-name: github-stop-pipeline-${{ github.run_id }}
+          aws-region: ca-central-1
+
+      - name: Confirm execution is running
+        id: execution
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          STATUS="$(aws stepfunctions describe-execution \
+            --execution-arn "$EXECUTION_ARN" \
+            --query status \
+            --output text)"
+
+          echo "Current status: $STATUS"
+
+          if [[ "$STATUS" != "RUNNING" ]]; then
+            echo "Execution is not running; no stop request was sent."
+            exit 1
+          fi
+
+      - name: Stop execution
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          aws stepfunctions stop-execution \
+            --execution-arn "$EXECUTION_ARN" \
+            --cause "$STOP_REASON"
+
+      - name: Verify result
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          STATUS="$(aws stepfunctions describe-execution \
+            --execution-arn "$EXECUTION_ARN" \
+            --query status \
+            --output text)"
+
+          echo "Final execution status: $STATUS"
+
+          if [[ "$STATUS" != "ABORTED" ]]; then
+            echo "Expected ABORTED but received $STATUS."
+            exit 1
+          fi
+
+          {
+            echo "## Pipeline execution stopped"
+            echo
+            echo "- Execution: \`$EXECUTION_ARN\`"
+            echo "- Status: \`$STATUS\`"
+            echo "- Requested by: \`${GITHUB_ACTOR}\`"
+            echo "- Reason: $STOP_REASON"
+          } >> "$GITHUB_STEP_SUMMARY"

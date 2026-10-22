@@ -1,0 +1,8 @@
+# Local development and tests only. On EMR the runtime provides pyspark;
+# PyYAML is vendored into pydeps.zip by scripts/package.sh.
+pyspark==3.5.1
+pyyaml>=6.0
+pytest>=8
+pandas>=2
+pyarrow>=14
+boto3          # scripts/submit_emr_serverless.py (not needed for --dry-run)

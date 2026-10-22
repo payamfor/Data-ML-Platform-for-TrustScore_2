@@ -1,0 +1,302 @@
+# Telco Time-Aware Event-based Behavioural Features Documentation
+
+**Telco Behavioural Feature Engineering**
+
+Anomaly Detection Feature Documentation
+
+Technical Reference Guide
+
+Telco Analysis
+
+Version 1.0
+
+1. Executive overview
+
+This document describes the complete set of behavioural features computed by the telco anomaly detection pipeline. The pipeline ingests account change events (device swaps, SIM changes, status transitions), Enstream API call logs, and lineage-derived events (phone number changes, MNO ports) to produce features at three hierarchical scopes: customer, account, and MSISDN. Each feature captures a distinct temporal, statistical, or relational signal designed to surface anomalous subscriber behaviour.
+
+**Supported MNOs and event types:** The pipeline filters account changes to only the event types supported per carrier. Bell and Telus support device changes, SIM changes, and all four status transitions (activation, reactivation, cancellation, suspension). Rogers supports device changes, SIM changes, suspension, and cancellation.
+
+2. Pipeline architecture
+
+The pipeline follows a staged functional architecture. Raw data sources are first normalised into a unified event schema, then scoped to entity snapshots at a reference timestamp, and finally transformed into feature vectors through modular feature calculators.
+
+2.1 Data sources
+
+- **Account changes:** Device swaps, SIM changes, and status transitions from Bell, Rogers, and Telus carrier systems.
+- **Enstream API calls:** Third-party service provider queries against subscriber records, carrying partner, industry, and use-case metadata.
+- **Lineage table:** Historical mapping of customer to account to MSISDN to MNO, with validity windows (from_ts, to_ts). Used to derive phone number change and MNO port events.
+- **Hash mapping:** Lookup table joining Enstream hashed MSISDNs to account-change-key hashes for identity resolution.
+
+2.2 Normalisation stage
+
+All raw events are normalised into a canonical event schema before feature computation:
+
+| **Field** | **Type** | **Description** |
+| --- | --- | --- |
+| customer_id | string | Top-level customer identity |
+| acct_id | string | Account identity within a customer |
+| msisdn | string | Phone number (subscriber line) |
+| mno | string | Mobile network operator (Bell, Rogers, Telus) |
+| event_ts | timestamp | When the event occurred |
+| event_family | string | Canonical category (e.g. sim_change, device_change) |
+| event_type | string | Raw event type from source system |
+| event_source | string | Origin system (account_change, enstream, lineage) |
+| event_weight | double | Numeric weight for weighted aggregations (default 1.0) |
+
+**Canonical event families:** device_change, sim_change, account_reactivation, account_activation, account_cancellation, account_suspension, phone_number_change, mno_port, enstream_api_call.
+
+2.3 Scoping and snapshots
+
+Features are computed relative to a reference timestamp. The pipeline builds entity snapshots by joining the reference point against the lineage table to identify which accounts and MSISDNs were active at that moment. Three snapshot levels are produced:
+
+- **Customer snapshot:** One row per (reference_id, customer_id). Aggregates the earliest from_ts and latest to_ts across all active lineage rows.
+- **Account snapshot:** One row per (reference_id, customer_id, acct_id, mno). Captures the account-level validity window.
+- **MSISDN snapshot:** One row per (reference_id, customer_id, acct_id, msisdn, mno). The finest grain, representing a single subscriber line.
+
+Events are then attached to each scope by joining on the entity keys and filtering to events that occurred between from_ts and reference_ts.
+
+3. Lookback windows
+
+Most features are computed across multiple lookback windows measured backward from the reference timestamp. The default windows are 1, 3, 7, 30, and 90 days. For the 1-day and 3-day windows, the pipeline uses hour-precision (24 and 72 hours respectively) to capture intra-day patterns. For 7, 30, and 90 days, calendar-day precision is used.
+
+This multi-window approach lets the model detect both rapid changes (a burst of SIM swaps in 24 hours) and gradual trend shifts (steadily increasing Enstream queries over 90 days).
+
+4. Feature families
+
+Features are organised into families. Each family is computed per event type (device_change, sim_change, etc.) and per scope (customer, account, MSISDN). The naming convention is:
+
+{prefix}_{event_family}_{metric}_{window}
+
+Where prefix is cust, acct, or msisdn; event_family is the canonical event name; and window is the lookback period (e.g. 7d, 30d).
+
+4.1 Event frequency features
+
+Counts how many events of each type occurred within each lookback window, plus a binary indicator of whether any events occurred at all. For non-Enstream events, these are simple unweighted counts. For Enstream API calls, a separate weighted frequency calculation applies inverse-volume weights (see section 4.8).
+
+!Screenshot 2026-03-16 at 12.09.40 PM.png
+
+| **Feature** | **Formula** | **Anomaly signal** |
+| --- | --- | --- |
+| {prefix}_{ef}_cnt_{W}d | COUNT(events in window W) | Unusually high counts suggest automated or fraudulent activity |
+| {prefix}_{ef}_any_{W}d | MAX(1 if event in W, else 0) | Binary flag: any activity at all in the window |
+
+**Why it matters:** A customer with 12 SIM changes in 1 day is far more suspicious than one with 12 over 90 days. The multi-window counts let models capture this contrast.
+
+4.2 Event recency features
+
+Measures how recently the last event of each type occurred relative to the reference timestamp.
+
+!Screenshot 2026-03-16 at 12.10.18 PM.png
+
+| **Feature** | **Formula** | **Anomaly signal** |
+| --- | --- | --- |
+| {prefix}_{ef}_last_ts | MAX(event_ts) | Timestamp of most recent event |
+| {prefix}_{ef}_days_since_last | DATEDIFF(reference_ts, last_ts) | Long gaps may indicate dormant accounts reactivating; very short gaps indicate current activity |
+|  |  |  |
+
+**Why it matters:** An account that has been dormant for 2 years and suddenly shows a SIM change followed by an Enstream query within the same hour is a strong takeover signal.
+
+4.3 Periodicity and inter-arrival features
+
+Analyses the time gaps between consecutive events of the same type. Legitimate subscribers tend to have irregular but naturally spaced events, while automated or coordinated activity produces either very regular intervals or zero-gap bursts.
+
+!Screenshot 2026-03-16 at 12.10.40 PM.png
+
+| **Feature** | **Formula** | **Anomaly signal** |
+| --- | --- | --- |
+| {prefix}_{ef}_interval_mean | AVG(gap in days between consecutive events) | Very small mean = rapid-fire activity |
+| {prefix}_{ef}_interval_median | MEDIAN(gap in days) | Robust central tendency, less affected by outliers |
+| {prefix}_{ef}_interval_min | MIN(gap in days) | Smallest gap reveals the fastest burst |
+| {prefix}_{ef}_interval_max | MAX(gap in days) | Largest gap shows dormancy periods |
+| {prefix}_{ef}_interval_stddev | STDDEV(gap in days) | High variance = mix of bursts and quiet periods |
+| {prefix}_{ef}_interval_cv | stddev / mean | Coefficient of variation: >1 indicates bursty patterns |
+| {prefix}_{ef}_inverse_mean_interarrival_velocity | 1 / interval_mean | Higher velocity = more frequent activity |
+
+**Why it matters:** A coefficient of variation near zero means events are arriving at a machine-like regular cadence, while a very high CV indicates unpredictable bursts, both of which are anomalous for human subscribers.
+
+4.4 Burstiness features
+
+Captures whether events cluster into intense short-term spikes rather than distributing evenly over time. Built on monthly aggregation plus cross-window ratios.
+
+!Screenshot 2026-03-16 at 12.03.33 PM.png
+
+| **Feature** | **Formula** | **Anomaly signal** |
+| --- | --- | --- |
+| {prefix}_{ef}_max_monthly_cnt | MAX(events per month) | Peak month activity level |
+| {prefix}_{ef}_avg_monthly_cnt | AVG(events per month) | Baseline monthly activity |
+| {prefix}_{ef}_monthly_cnt_std | STDDEV(events per month) | Month-to-month volatility |
+| {prefix}_{ef}_active_months | COUNT(distinct active months) | How many months had any events |
+| {prefix}_{ef}_monthly_peak_to_avg | max_monthly / avg_monthly | Spike ratio: >2 indicates concentrated bursts |
+| {prefix}_{ef}_cnt_1d_over_3d | cnt_1d / cnt_3d | Short-term concentration ratio |
+| {prefix}_{ef}_cnt_7d_over_30d | cnt_7d / cnt_30d | Medium-term concentration ratio |
+| {prefix}_{ef}_cnt_30d_over_90d | cnt_30d / cnt_90d | Long-term trend ratio |
+
+**Why it matters:** A cnt_1d_over_3d ratio of 1.0 means all 3-day activity happened in a single day, a strong burst signal. A ratio of 0.33 suggests even distribution. The peak-to-avg metric catches months with disproportionate activity that may correspond to fraud campaigns.
+
+4.5 Temporal entropy features
+
+Measures how uniformly events distribute across time dimensions: hour of day, day of week, and month of year. Uses Shannon entropy, where higher entropy means more uniform distribution and lower entropy indicates concentration in specific time slots.
+
+!Screenshot 2026-03-16 at 12.07.04 PM.png
+
+| **Feature** | **Formula** | **Anomaly signal** |
+| --- | --- | --- |
+| {prefix}_{ef}_event_hour_entropy | -SUM(p * log2(p)) over 24 hours | Low entropy = events clustered in specific hours (e.g. all at 3 AM) |
+| {prefix}_{ef}_event_day_of_week_entropy | -SUM(p * log2(p)) over 7 days | Low entropy = events only on certain weekdays |
+| {prefix}_{ef}_event_month_entropy | -SUM(p * log2(p)) over 12 months | Low entropy = seasonal concentration |
+
+**Why it matters:** Legitimate user behaviour typically has moderate entropy across hours (usage during waking hours) and days (slightly lower on weekends). Very low hour entropy, particularly concentrated in off-hours, can indicate automated scripts or coordinated fraud rings operating during low-oversight periods.
+
+4.6 Recency-weighted intensity
+
+Applies exponential time-decay weighting to events, with a configurable half-life (default 7 days). Recent events contribute more to the intensity score than older ones, creating a continuous measure of current activity level.
+
+!Screenshot 2026-03-16 at 12.03.51 PM.png
+
+| **Feature** | **Formula** | **Anomaly signal** |
+| --- | --- | --- |
+| {prefix}_{ef}_recency_weighted_intensity | SUM(exp(-ln(2)/half_life * age_days)) | High intensity = dense recent activity; emphasises current state over historical average |
+
+**Why it matters:** Unlike simple window counts that treat day 1 and day 6 equally within a 7-day window, exponential decay naturally emphasises the most recent activity. This makes the feature responsive to sudden behavioural changes without requiring explicit window boundaries.
+
+4.7 Cumulative event slope
+
+Fits a linear regression of cumulative event count against elapsed days since the first event. The slope captures the overall rate of activity acceleration or deceleration over the full observation period.
+
+!Screenshot 2026-03-16 at 12.04.09 PM.png
+
+| **Feature** | **Formula** | **Anomaly signal** |
+| --- | --- | --- |
+| {prefix}_{ef}_cumulative_event_slope | REGR_SLOPE(cumulative_count, elapsed_days) | Positive slope = accelerating; negative = decelerating; steep positive = rapid escalation |
+
+**Why it matters:** A subscriber whose device change frequency is accelerating (slope >> 1) may be engaged in a pattern of handset fraud. The slope is robust to the total observation length and captures the trend direction regardless of absolute volume.
+
+4.8 Time-to-k events
+
+Measures how many days it took to accumulate the most recent k events (default k=3 and k=5). Captures recent velocity without relying on fixed lookback windows.
+
+!Screenshot 2026-03-16 at 12.15.34 PM.png
+
+| **Feature** | **Formula** | **Anomaly signal** |
+| --- | --- | --- |
+| {prefix}_{ef}_days_for_last_{k}_events | DATEDIFF(latest, kth event) | Small span = rapid recent cluster of events |
+| {prefix}_{ef}_k_event_velocity_{k} | k / days_for_last_k | Events per day during the most recent burst |
+
+**Why it matters:** This complements the fixed-window counts by adapting to the actual event distribution. If the last 5 SIM changes all happened within 2 days, the velocity of 2.5 events/day is an extremely strong anomaly signal regardless of which lookback window it falls in.
+
+4.9 Enstream-specific: volume-weighted frequency
+
+For Enstream API calls, raw counts are supplemented with inverse-volume-weighted counts. The weight assigned to each event from a given service provider and use case is computed as:
+
+weight = clamp(sqrt(avg_volume / partner_volume), min=0.25, max=4.0)
+
+Where avg_volume is the mean query count across all service providers for the entity within the lookback window, and partner_volume is the specific provider's count. High-volume providers (routine batch queries) receive lower weights, while rare or novel queries receive higher weights.
+
+!Screenshot 2026-03-16 at 12.04.43 PM.png
+
+| **Feature** | **Formula** | **Anomaly signal** |
+| --- | --- | --- |
+| {prefix}_{ef}_cnt_{W}d | COUNT(enstream events in window W) | Raw count |
+| {prefix}_{ef}_weighted_cnt_{W}d | SUM(weight * event) in window W | Volume-adjusted count amplifying rare providers |
+| {prefix}_{ef}_any_{W}d | MAX(1 if event, else 0) | Binary presence flag |
+
+**Why it matters:** A single query from a new service provider in an unusual industry is far more informative than 100 routine queries from a well-known batch verification service. The weighting scheme ensures models can discriminate between routine and suspicious Enstream activity.
+
+4.10 Enstream-specific: diversity features
+
+Counts the number of distinct values across partner metadata dimensions within each lookback window. Computed over three dimensions: industry, service_provider_name, and use_case.
+
+!Screenshot 2026-03-16 at 12.05.12 PM.png
+
+| **Feature** | **Formula** | **Anomaly signal** |
+| --- | --- | --- |
+| {prefix}_{ef}_distinct_{dim}_{W}d | COUNT_DISTINCT(dimension in window W) | High diversity = queried by many different partners or for many different purposes |
+
+**Why it matters:** A subscriber queried by 8 different industries in 7 days is unusual compared to typical subscribers who may be queried by 1 to 2 industries. Sudden spikes in diversity can indicate the subscriber's identity is being shopped around fraudulent channels.
+
+4.11 Enstream-specific: novelty features
+
+Measures the appearance of never-before-seen dimension values (industries, service providers, use cases) in a subscriber's Enstream query history.
+
+!Screenshot 2026-03-16 at 12.05.34 PM.png
+
+| **Feature** | **Formula** | **Anomaly signal** |
+| --- | --- | --- |
+| {prefix}_new_{dim}_spread_days | DATEDIFF(last first-seen, first first-seen) | Compressed spread = many new values appeared quickly |
+| {prefix}_days_since_last_new_{dim} | DATEDIFF(reference_ts, latest first-seen) | Small value = very recent novel activity |
+| {prefix}_{dim}_distinct_cnt | COUNT_DISTINCT(dimension values) | Total unique values ever observed |
+| {prefix}_new_{dim}_event_cnt | COUNT(events at first-seen timestamp) | How many events correspond to first-time observations |
+| {prefix}_{dim}_event_cnt | COUNT(all events with dimension) | Total events for the dimension |
+| {prefix}_new_{dim}_event_frac | new_event_cnt / total_event_cnt | Fraction of events that are first-time observations |
+
+**Why it matters:** If a subscriber who has only ever been queried by telecom verification services suddenly starts receiving queries from financial services, insurance, and retail within a 3-day span, the novelty fraction will spike. This is a strong indicator that the subscriber's identity is being exploited in new contexts.
+
+4.12 State transition velocity
+
+Measures the time between pairs of different event types, capturing cross-event sequential patterns. For every ordered pair of event types (A, B) where A occurs before B, the pipeline finds the next occurrence of B after each A and computes transition statistics.
+
+!Screenshot 2026-03-16 at 12.06.04 PM.png
+
+| **Feature** | **Formula** | **Anomaly signal** |
+| --- | --- | --- |
+| {prefix}_{A}_to_{B}_avg_transition_days | AVG(days from A to next B) | Short average = events follow each other quickly |
+| {prefix}_{A}_to_{B}_min_transition_days | MIN(days from A to next B) | Shortest observed gap between the event pair |
+| {prefix}_{A}_to_{B}_transition_velocity | 1 / avg_transition_days | Higher velocity = tighter coupling between events |
+
+**Default transition pairs:** All permutations of DEVICE_CHANGE, SIM_CHANGE, STATUS_CHANGE-S (suspension), PHONE_NUMBER_CHANGE, MNO_PORT, and ENSTREAM_API_CALL where source differs from target. This produces 30 directed pairs, each yielding 3 features.
+
+**Why it matters:** The sequence SIM_CHANGE followed by ENSTREAM_API_CALL within minutes is a classic SIM-swap fraud pattern: the attacker changes the SIM and then a complicit service provider queries the subscriber to verify the takeover succeeded. The transition velocity captures exactly this kind of sequential dependence across heterogeneous event types.
+
+4.13 Stability and tenure features
+
+Stability features measure how long each entity (customer, account, MSISDN) has existed in the lineage system at the time of the reference timestamp. Unlike all other feature families which are derived from events, stability features are derived directly from the scope snapshots by computing the difference between the reference timestamp and the earliest from_ts for each entity.
+
+!Screenshot 2026-03-16 at 12.15.13 PM.png
+
+| **Feature** | **Formula** | **Anomaly signal** |
+| --- | --- | --- |
+| customer_node_tenure_days | DATEDIFF(reference_ts, MIN(from_ts)) across all customer lineage rows | Short customer tenure may indicate a freshly created identity used for fraud |
+| account_node_tenure_days | DATEDIFF(reference_ts, from_ts) at the account level, MAX per (customer, account, mno) group | A new account under a long-tenured customer can indicate account takeover or internal fraud |
+| msisdn_node_tenure_days | DATEDIFF(reference_ts, from_ts) at the MSISDN level, MAX per (customer, account, mno, msisdn) group | A freshly provisioned MSISDN that immediately generates high event volumes is suspicious |
+
+**Why it matters:** Stability features provide essential context for interpreting event-based features. A customer with 5 SIM changes in 7 days is far more concerning if the account is only 10 days old (tenure = 10) than if the account has been active for 5 years (tenure = 1,825). The combination of short tenure with high event frequency or low recency creates powerful interaction signals that models can exploit. Additionally, a mismatch between tenure levels, such as a 3-year customer suddenly opening a brand-new account with a freshly ported MSISDN, is itself a strong anomaly indicator.
+
+**Scope:** Stability features are computed once from the snapshot hierarchy and joined to the customer-level feature set. The three tenure columns (customer_node_tenure_days, account_node_tenure_days, msisdn_node_tenure_days) are available for downstream model consumption at all scope levels.
+
+5. Scope application matrix
+
+Every generic feature family (sections 4.1 through 4.8 and 4.12) is computed at all three scopes for each of the following event families: device_change, sim_change, account_suspension, phone_number_change, mno_port, and enstream_api_call. Enstream-specific features (sections 4.9 through 4.11) are additionally computed for the enstream_api_call event family only.
+
+| **Feature family** | **Event types applied** | **Scopes** |
+| --- | --- | --- |
+| Frequency (unweighted) | All except enstream_api_call | Customer, Account, MSISDN |
+| Frequency (weighted) | enstream_api_call only | Customer, Account, MSISDN |
+| Recency | All 6 event families | Customer, Account, MSISDN |
+| Periodicity | All 6 event families | Customer, Account, MSISDN |
+| Burstiness | All 6 event families | Customer, Account, MSISDN |
+| Temporal entropy | All 6 event families | Customer, Account, MSISDN |
+| Recency-weighted intensity | All 6 event families | Customer, Account, MSISDN |
+| Cumulative slope | All 6 event families | Customer, Account, MSISDN |
+| Time-to-k events | All except enstream_api_call | Customer, Account, MSISDN |
+| Enstream diversity | enstream_api_call only | Customer, Account, MSISDN |
+| Enstream novelty | enstream_api_call only | Customer, Account, MSISDN |
+| State transition velocity | 30 directed pairs | Customer, Account, MSISDN |
+
+6. Approximate feature count
+
+The total number of output columns per scope depends on the number of lookback windows (default 5), event families (6), transition pairs (30), k-values (2), and dimension columns (3). A rough breakdown per scope:
+
+- Frequency: 5 event families x 5 windows x 2 metrics + enstream weighted (5 windows x 3 metrics) = 65 features
+- Recency: 6 families x 2 = 12 features
+- Periodicity: 6 families x 7 = 42 features
+- Burstiness: 6 families x 8 (4 monthly stats + 1 ratio + 3 cross-window) = 48 features
+- Temporal entropy: 6 families x 3 = 18 features
+- Recency-weighted intensity: 6 families x 1 = 6 features
+- Cumulative slope: 6 families x 1 = 6 features
+- Time-to-k: 5 families x 2 k-values x 2 = 20 features
+- Enstream diversity: 3 dims x 5 windows = 15 features
+- Enstream novelty: 3 dims x 6 metrics = 18 features
+- State transitions: 30 pairs x 3 = 90 features
+- **Total per scope: approximately 340 features**
+
+With three scopes, the combined pipeline produces approximately 1,020 features. The exact count varies slightly depending on which columns are present in the input data.

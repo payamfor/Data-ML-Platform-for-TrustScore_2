@@ -1,0 +1,78 @@
+# =============================================================================
+# Overlay: the DataAI sandbox account
+# =============================================================================
+# A full-shape sweep against the sandbox feature tables, writing models and
+# metrics into the sandbox model bucket. Nothing here names a dev resource, so a
+# wrong argument cannot reach one.
+#
+#   ./scripts/submit_emr.sh ml-sweep
+#
+# with CONFIG_FILES pointing at base.yaml + this file.
+#
+# Literal names rather than `${...}`: in `--deploy-mode cluster` the driver has
+# none of the submitting shell's environment, so an env var here would resolve
+# to its default on every run that matters. That is the same reasoning as
+# conf/lineage/sandbox.yaml and it applies with more force to a sweep, whose
+# arms are fanned out across several submissions that must agree on every path.
+# =============================================================================
+
+run:
+  mode: full
+  models_version: sandbox_v3
+
+  # Deliberately null. A fanned-out sweep pins the run id by setting TS05_RUN_ID
+  # on every submission - `load_ml_config` reads that variable only when this key
+  # is unset, so writing a value here would silently override the scheduler and
+  # scatter the arms of one sweep across as many prefixes as there are jobs.
+  run_id: null
+
+data:
+  training_root: s3://lotus-sandbox-ml-preprocessing-data/preprocessing_data/version1/train/
+  testing_root: s3://lotus-sandbox-ml-preprocessing-data/preprocessing_data/version1/test/
+  # Where every ML job writes (feature selections, models, champion, scoring).
+  # Must equal the Terraform's ml_v2_output_root (s3://<sagemaker bucket>/
+  # <ml_v2_output_prefix>, default demo_model_results/). The training and
+  # scoring jobs also receive it as an override from the helper Lambda, but the
+  # inference endpoint reads only this file, so a different value here made the
+  # endpoint look for champion/current.json in a folder training never writes.
+  feature_selection_root: s3://lotus-sandbox-sagemaker-data/feature_selection_results/
+  models_root: s3://lotus-sandbox-sagemaker-data/model_results/
+
+  # Empty window lists mean discover every available time_window= partition
+  # under the corresponding S3 root at job startup. Set explicit lists only
+  # when a run intentionally needs a fixed temporal slice.
+  training_months: []
+  testing_windows: []
+
+  # Phase 1 fraud feed as written under test/fraud/Phase-v1.0/.
+  fraud_sources:
+    - NBC-v1.0
+
+  # The EMR job writes fraud rows for every window from its first one, so the
+  # cutoff is that first window start. base.yaml's 2024-10-01 was the old
+  # Phase 1 feed's incomplete history and would drop Aug-Sep fraud here. Move
+  # this later if the NBC feed's early months prove incomplete.
+  fraud_min_timestamp: "2024-08-01 00:00:00"
+
+sweep:
+  # The whole ladder and all nine variants, as in base.yaml - the sandbox exists
+  # to rehearse the dev sweep's shape, and a rehearsal that sweeps a different
+  # product is not evidence about the run it is rehearsing.
+  #
+  # `max_hyperparam_configs` stays 0 for the same reason. Bound a sandbox run
+  # with `--max-minutes-per-arm` on the submission instead: a truncated arm
+  # writes _INCOMPLETE.json with its unattempted count and can be resumed,
+  # whereas a truncated *grid* silently changes what "best" was chosen from.
+  max_hyperparam_configs: 0
+
+behaviour:
+  # Off, as in base. A full sweep's scored CSVs would be the largest thing in
+  # the bucket by an order of magnitude and nothing reads them; the parquet is
+  # written either way.
+  write_scores_csv: false
+
+  # On. Every EMR training window has the same 636 feature columns, so a
+  # selected feature missing from one is a real fault, not a sparse month;
+  # fail instead of training on an all-null column. (Applies to the training
+  # windows only; base.yaml has the reasoning for the default.)
+  strict_missing_feature_check: true
